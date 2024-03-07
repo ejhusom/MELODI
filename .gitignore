@@ -1,0 +1,73 @@
+# compiled files:
+build*
+*.o
+*.so
+*.a
+
+# data-files
+*.dat
+*.txt
+*.csv
+llm_response*
+
+# doconce:
+.*_html_file_collection
+
+# eclipse files:
+*.cproject
+*.project
+
+# executables
+*.exe
+*.x
+
+# images
+#*.png
+#*.jpg
+#*.jpeg
+#*.pdf
+
+# jekyll
+#_site/
+.sass-cache
+.jekyll-metadata
+
+# misc:
+.DS_Store
+Trash
+*.copyright
+*.copyright
+*.exerinfo
+*.exerinfo
+*.dlog
+*.user
+
+# python
+__pycache__
+.ipynb*
+
+# temporary files:
+*.pyc
+*.bak
+*.swp
+*~
+.*~
+tmp*
+.#*
+\#*
+
+# tex files:
+*.log
+*.dvi
+*.aux
+*.blg
+*.idx
+*.nav
+*.out
+*.toc
+*.snm
+*.vrb
+
+# vim
+Session.vim
+
