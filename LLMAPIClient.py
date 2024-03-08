@@ -37,11 +37,11 @@ class LLMAPIClient:
         self.model_name = model_name
         self.role = role
 
-    def call_api(self, content, model_name=None, role=None, stream=False):
-        """Send a request to the API with the given content, model name, and role.
+    def call_api(self, prompt, model_name=None, role=None, stream=False):
+        """Send a request to the API with the given prompt, model name, and role.
         
         Args:
-            content (str): The content of the message to be sent to the API.
+            prompt (str): The prompt to be sent to the API.
             model_name (str, optional): The model name to use for this request. Defaults to None.
             role (str, optional): The role to use for this message. Defaults to None.
             stream (bool, optional): Whether to stream the response. Defaults to False.
@@ -57,7 +57,7 @@ class LLMAPIClient:
 
         data = {
             "model": model_name, 
-            "messages": [{"role": role, "content": content}],
+            "messages": [{"role": role, "content": prompt}],
             "stream": stream
         }
 
@@ -70,7 +70,7 @@ class LLMAPIClient:
 
         response_json = json.loads(response.text)
 
-        metadata = {
+        data = {
             "model_name": response_json.get("model"),
             "created_at": response_json.get("created_at"),
             "total_duration": response_json.get("total_duration"),
@@ -79,6 +79,8 @@ class LLMAPIClient:
             "prompt_duration": response_json.get("prompt_eval_duration"),
             "response_token_length": response_json.get("eval_count"),
             "response_duration": response_json.get("eval_duration"),
+            "prompt": prompt,
+            "response": response_json.get("message").get("content"),
         }
 
-        return response, metadata
+        return data
