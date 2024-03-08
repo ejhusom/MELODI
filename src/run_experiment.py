@@ -15,6 +15,10 @@ import json
 import re
 import subprocess
 import sys
+import time
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 from config import config
 from LLMAPIClient import LLMAPIClient
@@ -115,25 +119,26 @@ class LLMEC():
         )
 
         # Start power measurements
-        # metrics_filename = config.DATA_DIR_PATH + "metrics.json" 
         if self.verbosity > 0:
             print("Starting power measurements...")
+
         metrics_process = subprocess.Popen(
             [
                 "scaphandre",
                 "json",
                 "--step", "0",
-                "--step-nano", "100000000",
+                "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
+                "--resources",
                 "--process-regex", "ollama",
-                # "--file", metrics_filename,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
+        time.sleep(config.MONITORING_START_DELAY)
 
         # Prompt LLM
         if self.verbosity > 0:
-            print("Calling LLM API...")
+            print("Calling LLM service...")
         data = ollama_client.call_api(prompt=prompt, stream=stream)
         end_time = datetime.datetime.now()
 
@@ -142,16 +147,25 @@ class LLMEC():
             sys.exit(1)
 
         if self.verbosity > 0:
-            print("Received response from LLM API.")
+            print("Received response from LLM service.")
 
         # Collect power measurements
+        time.sleep(config.MONITORING_END_DELAY)
         metrics_process.terminate()
         if self.verbosity > 0:
             print("Power measurements stopped.")
         metrics_stream = metrics_process.stdout.readlines()[-1].decode("utf-8")
-        # with open(metrics_filename, "r") as f:
-        #     metrics = json.load(f)
         metrics = parse_json_objects(metrics_stream)
+        metrics_per_process = self._parse_metrics(metrics)
+
+        for cmdline, specific_process in metrics_per_process.items():
+            specific_process.set_index("timestamp", inplace=True)
+            if config.LLM_SERVICE_KEYWORD in cmdline:
+                metrics_llm = specific_process
+            if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                metrics_monitoring = specific_process
+
+        # plot_metrics(metrics_llm, metrics_monitoring)
 
         if save_data:
             if self.verbosity > 0:
@@ -165,7 +179,59 @@ class LLMEC():
             if self.verbosity > 0:
                 print(f"Data saved to {filename}")
 
+    def _parse_metrics(self, metrics):
+        """Convert collected power metrics into structured data."""
+
+        dfs = []
+
+        for measurement in metrics:
+            consumers = measurement["consumers"]
+            df = flatten_data(consumers, split_key="resources_usage")
+            dfs.append(df)
+            # for consumer in consumers:
+            #     # Check that the consumer is actually a process related to the
+            #     # LLM, and not the scaphandre process.
+            #     if "scaphandre" in consumer["exe"]:
+            #         continue
+
+            #     # Extract nested "resources_usage" data and flatten the structure
+            #     resources_usage = consumer.pop('resources_usage')
+            #     for key, value in resources_usage.items():
+            #         consumer[key] = value
+
+            # # Convert the list of dicts into a DataFrame
+            # df = pd.DataFrame(consumer)
+
+        metrics_structured = pd.concat(dfs)
+        metrics_per_process = split_dataframe_by_column(metrics_structured, "cmdline")
+
+        return metrics_per_process
+                
+def plot_metrics(metrics_llm, metrics_monitoring):
+
+    plt.figure()
+    plt.plot(
+            metrics_monitoring.index,
+            metrics_monitoring["consumption"],
+            ".-",
+            label="Monitoring service",
+    )
+    plt.plot(
+            metrics_llm.index,
+            metrics_llm["consumption"],
+            ".-",
+            label="LLM service",
+    )
+    # metrics_monitoring["consumption"].plot(color="red")
+    # metrics_llm["consumption"].plot()
+    plt.xlabel("Power consumption (microwatts)")
+    plt.ylabel("Timestamps")
+    plt.legend()
+    plt.show()
+
 def parse_json_objects_from_file(file_path):
+    """Wrapper for 'parse_json_objects', to allow for passing file name."""
+
     # Open and read the content of the file
     with open(file_path, 'r') as file:
         content = file.read()
@@ -175,6 +241,20 @@ def parse_json_objects_from_file(file_path):
     return objects
 
 def parse_json_objects(content):
+    """Extract JSON objects from string.
+
+    This function is specifically made for extracting JSON objects from a string
+    that may contain multiple root objects, and also for allowing that the string
+    may end with an incomplete JSON object (which are excluded from the
+    parsing).
+
+    Args:
+        content (str): String to parse.
+
+    Returns:
+        objects (list): JSON objects.
+
+    """
 
     objects = []  # List to store successfully parsed JSON objects
     start_idx = 0  # Start index of the JSON object being parsed
@@ -189,6 +269,98 @@ def parse_json_objects(content):
             break  # Stop parsing as we've either reached the end or found incomplete JSON
 
     return objects
+
+
+def flatten_data(data, split_key):
+    """
+    Flattens a list of dictionaries, including nested dictionaries,
+    and converts it into a pandas DataFrame.
+
+    Args:
+        data (list): List of dictionaries to be flattened and converted.
+
+    Returns:
+        df (pdDataFrame): A pandas DataFrame with flattened data.
+    """
+    # Iterate over each record in the provided data list
+    for record in data:
+        # Check if there's a nested dictionary that needs flattening
+        # Here 'resources_usage' is the nested dictionary we expect based on the given structure
+        if split_key in record:
+            # Extract and remove the nested dictionary
+            split_key_items = record.pop(split_key)
+            # Merge the nested dictionary's key-value pairs into the main dictionary
+            for key, value in split_key_items.items():
+                record[key] = value
+
+    # Convert the now-flattened list of dictionaries into a DataFrame
+    df = pd.DataFrame(data)
+    return df
+
+def split_dataframe_by_column(df, column_name):
+    """
+    Splits a DataFrame into multiple DataFrames based on unique values in a specified column.
+
+    Args:
+        df: The pandas DataFrame to split.
+        column_name: The name of the column to split the DataFrame by.
+
+    Returns:
+        A dictionary of DataFrames, where each key is a unique value from the
+        specified column, and its corresponding value is a DataFrame containing
+        only rows with that value.
+    """
+    # Initialize an empty dictionary to store the result
+    df_dict = {}
+
+    # Get unique values in the specified column
+    unique_values = df[column_name].unique()
+
+    # Loop through each unique value and create a separate DataFrame for it
+    for value in unique_values:
+        df_dict[value] = df[df[column_name] == value]
+
+    return df_dict
+
+def calculate_energy_consumption_from_power_measurements(df):
+    """
+    Calculates the energy consumption in kWh for each DataFrame in the dictionary,
+    given the power measurements in microwatts and using the timestamps to calculate
+    the duration of each process.
+    
+    Parameters:
+    - df_dict: Dictionary of DataFrames, split by unique cmdline values.
+    
+    Returns:
+    - A dictionary with the same keys as df_dict, but the values are the total energy
+      consumption in kWh for the processes corresponding to each cmdline, calculated
+      using the duration derived from the timestamps.
+    """
+    energy_consumption_dict = {}
+
+    for cmdline, df in df_dict.items():
+        if not df.empty:
+            # Convert timestamps to datetime objects
+            df['datetime'] = pd.to_datetime(df['timestamp'], unit='s')
+            # Calculate the duration in hours
+            duration_hours = (df['datetime'].max() - df['datetime'].min()).total_seconds() / 3600.0
+
+            # Handle the case where duration might be zero to avoid division by zero error
+            if duration_hours > 0:
+                # Calculate total power consumption in microwatts
+                total_power_microwatts = df['consumption'].sum()
+
+                # Convert total power consumption to kWh
+                energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**12
+
+                # Store the result in the dictionary
+                energy_consumption_dict[cmdline] = energy_consumption_kwh
+            else:
+                # If duration is zero, energy consumption is set to 0
+                energy_consumption_dict[cmdline] = 0
+
+    return energy_consumption_dict
+
 
 if __name__ == "__main__":
 

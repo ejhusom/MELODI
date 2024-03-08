@@ -4,8 +4,8 @@
 Example:
 
     >>> from config import config
-    >>> some_path = config.PARAMS_FILE_PATH
-    >>> file = config.DATA_PATH / "filename.txt"
+    >>> some_variable = config.PARAMETER_NAME
+    >>> file = config.DATA_DIR_PATH / "filename.txt"
 
 Author:   Erik Johannes Husom
 Created:  2024-06-08
@@ -16,6 +16,11 @@ from pathlib import Path
 class Config:
     def __init__(self):
         # PARAMETERS
+        self.SAMPLE_FREQUENCY_NANO_SECONDS = 10000000
+        self.LLM_SERVICE_KEYWORD = "ollamaserve"
+        self.MONITORING_SERVICE_KEYWORD = "scaphandre"
+        self.MONITORING_START_DELAY = 1.0
+        self.MONITORING_END_DELAY = 1.0
 
         # PATHS
         self.DATA_DIR_PATH = Path("./data/")
