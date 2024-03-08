@@ -16,11 +16,9 @@ import re
 import subprocess
 import sys
 
+from config import config
 from LLMAPIClient import LLMAPIClient
 from PrometheusClient import PrometheusClient
-
-CONFIG_FILE_PATH = "./config/config.ini"
-DATA_DIR_PATH = "./data/"
 
 def run_prompt_with_energy_monitoring_with_prometheus(
     model_name="mistral",
@@ -63,12 +61,12 @@ def run_prompt_with_energy_monitoring_with_prometheus(
 
     if save_data:
         timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-        with open(DATA_DIR_PATH + f"llm_response_{timestamp_filename}.json", "w") as f:
+        with open(config.DATA_DIR_PATH + f"llm_response_{timestamp_filename}.json", "w") as f:
             json.dump(data, f)
 
 class LLMEC():
 
-    def __init__(self, config_path=CONFIG_FILE_PATH):
+    def __init__(self, config_path=config.CONFIG_FILE_PATH):
         """Prompting LLMs while measuring the energy consumption.
 
         Args:
@@ -117,7 +115,7 @@ class LLMEC():
         )
 
         # Start power measurements
-        # metrics_filename = DATA_DIR_PATH + "metrics.json" 
+        # metrics_filename = config.DATA_DIR_PATH + "metrics.json" 
         if self.verbosity > 0:
             print("Starting power measurements...")
         metrics_process = subprocess.Popen(
@@ -154,14 +152,13 @@ class LLMEC():
         # with open(metrics_filename, "r") as f:
         #     metrics = json.load(f)
         metrics = parse_json_objects(metrics_stream)
-        breakpoint()
 
         if save_data:
             if self.verbosity > 0:
                 print("Saving data...")
 
             timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-            filename = DATA_DIR_PATH + f"llm_response_{timestamp_filename}.json"
+            filename = config.DATA_DIR_PATH / f"llm_response_{timestamp_filename}.json"
             with open(filename, "w") as f:
                 json.dump(data, f)
 
