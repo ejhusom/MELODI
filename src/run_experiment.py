@@ -166,6 +166,11 @@ class LLMEC():
                 metrics_monitoring = specific_process
 
         # plot_metrics(metrics_llm, metrics_monitoring)
+        energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
+
+        for cmdline, energy_consumption in energy_consumption_dict.items():
+            print(f"Energy consumption for cmdline '{cmdline}': {energy_consumption} kWh")
+
 
         if save_data:
             if self.verbosity > 0:
@@ -322,7 +327,7 @@ def split_dataframe_by_column(df, column_name):
 
     return df_dict
 
-def calculate_energy_consumption_from_power_measurements(df):
+def calculate_energy_consumption_from_power_measurements(df_dict):
     """
     Calculates the energy consumption in kWh for each DataFrame in the dictionary,
     given the power measurements in microwatts and using the timestamps to calculate
