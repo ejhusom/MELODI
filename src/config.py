@@ -16,11 +16,13 @@ from pathlib import Path
 class Config:
     def __init__(self):
         # PARAMETERS
-        self.SAMPLE_FREQUENCY_NANO_SECONDS = 10000000
+        self.SAMPLE_FREQUENCY_NANO_SECONDS = 100000000
         self.LLM_SERVICE_KEYWORD = "ollamaserve"
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 1.0
         self.MONITORING_END_DELAY = 1.0
+        # self.SAVED_DATA_EXTENSION = ".pkl.xz"
+        self.SAVED_DATA_EXTENSION = ".csv"
 
         # PATHS
         self.DATA_DIR_PATH = Path("./data/")

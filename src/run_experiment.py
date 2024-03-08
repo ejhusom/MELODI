@@ -12,7 +12,7 @@ Created:
 import configparser
 import datetime
 import json
-import re
+import os
 import subprocess
 import sys
 import time
@@ -166,23 +166,53 @@ class LLMEC():
                 metrics_monitoring = specific_process
 
         # plot_metrics(metrics_llm, metrics_monitoring)
+
         energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
 
         for cmdline, energy_consumption in energy_consumption_dict.items():
-            print(f"Energy consumption for cmdline '{cmdline}': {energy_consumption} kWh")
+            # print(f"Energy consumption for cmdline '{cmdline[:10]}...': {energy_consumption} kWh")
+            if config.LLM_SERVICE_KEYWORD in cmdline:
+                data["energy_consumption_llm"] = energy_consumption
+            if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                data["energy_consumption_monitoring"] = energy_consumption
 
+        data_df = pd.DataFrame.from_dict([data])
 
         if save_data:
             if self.verbosity > 0:
                 print("Saving data...")
 
             timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-            filename = config.DATA_DIR_PATH / f"llm_response_{timestamp_filename}.json"
-            with open(filename, "w") as f:
-                json.dump(data, f)
+            llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_llm_data{config.SAVED_DATA_EXTENSION}"
+            metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_metrics_llm{config.SAVED_DATA_EXTENSION}"
+            metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_metrics_monitoring{config.SAVED_DATA_EXTENSION}"
+
+            with open(llm_data_filename, "w") as f:
+                self._save_data(data_df, llm_data_filename)
+
+            with open(metrics_llm_filename, "w") as f:
+                self._save_data(metrics_llm, metrics_llm_filename)
+
+            with open(metrics_monitoring_filename, "w") as f:
+                self._save_data(metrics_monitoring, metrics_monitoring_filename)
 
             if self.verbosity > 0:
-                print(f"Data saved to {filename}")
+                print(f"Data saved with timestamp {timestamp_filename}")
+
+        return data_df
+
+    def _save_data(self, data, filename):
+
+        with open(filename, "w") as f:
+            if "pkl" in str(filename).split(os.extsep):
+                data.to_pickle(filename)
+            elif "csv" in str(filename).split(os.extsep):
+                data.to_csv(filename)
+            elif "json" in os.path.splitext(filename)[-1]:
+                json.dump(data, f)
+            else:
+                print("Did not recognize file extension.")
+                
 
     def _parse_metrics(self, metrics):
         """Convert collected power metrics into structured data."""
@@ -193,19 +223,6 @@ class LLMEC():
             consumers = measurement["consumers"]
             df = flatten_data(consumers, split_key="resources_usage")
             dfs.append(df)
-            # for consumer in consumers:
-            #     # Check that the consumer is actually a process related to the
-            #     # LLM, and not the scaphandre process.
-            #     if "scaphandre" in consumer["exe"]:
-            #         continue
-
-            #     # Extract nested "resources_usage" data and flatten the structure
-            #     resources_usage = consumer.pop('resources_usage')
-            #     for key, value in resources_usage.items():
-            #         consumer[key] = value
-
-            # # Convert the list of dicts into a DataFrame
-            # df = pd.DataFrame(consumer)
 
         metrics_structured = pd.concat(dfs)
         metrics_per_process = split_dataframe_by_column(metrics_structured, "cmdline")
@@ -346,7 +363,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
     for cmdline, df in df_dict.items():
         if not df.empty:
             # Convert timestamps to datetime objects
-            df['datetime'] = pd.to_datetime(df['timestamp'], unit='s')
+            df['datetime'] = pd.to_datetime(df.index, unit='s')
             # Calculate the duration in hours
             duration_hours = (df['datetime'].max() - df['datetime'].min()).total_seconds() / 3600.0
 
@@ -356,7 +373,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
                 total_power_microwatts = df['consumption'].sum()
 
                 # Convert total power consumption to kWh
-                energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**12
+                energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**9
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
