@@ -66,7 +66,7 @@ class LLMAPIClient:
             response.raise_for_status()  # Raises HTTPError for bad responses
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return None, {}
+            return None
 
         response_json = json.loads(response.text)
 

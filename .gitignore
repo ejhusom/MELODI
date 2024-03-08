@@ -5,6 +5,7 @@ build*
 *.a
 
 # data-files
+data/
 *.dat
 *.txt
 *.csv
