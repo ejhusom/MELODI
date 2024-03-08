@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Run experiments on LLMs and energy consumption.
+"""Use local LLMs while monitoring energy usage.
 
 Author:
     Erik Johannes Husom
@@ -183,9 +183,9 @@ class LLMEC():
                 print("Saving data...")
 
             timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-            llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_llm_data{config.SAVED_DATA_EXTENSION}"
-            metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_metrics_llm{config.SAVED_DATA_EXTENSION}"
-            metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_metrics_monitoring{config.SAVED_DATA_EXTENSION}"
+            llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.LLM_DATA_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
+            metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
+            metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
 
             with open(llm_data_filename, "w") as f:
                 self._save_data(data_df, llm_data_filename)
@@ -209,7 +209,7 @@ class LLMEC():
             elif "csv" in str(filename).split(os.extsep):
                 data.to_csv(filename)
             elif "json" in os.path.splitext(filename)[-1]:
-                json.dump(data, f)
+                data.to_json(filename)
             else:
                 print("Did not recognize file extension.")
                 
@@ -230,6 +230,7 @@ class LLMEC():
         return metrics_per_process
                 
 def plot_metrics(metrics_llm, metrics_monitoring):
+    """Plot metrics for a single prompt-response."""
 
     plt.figure()
     plt.plot(

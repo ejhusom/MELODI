@@ -21,12 +21,14 @@ class Config:
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 1.0
         self.MONITORING_END_DELAY = 1.0
-        # self.SAVED_DATA_EXTENSION = ".pkl.xz"
-        self.SAVED_DATA_EXTENSION = ".csv"
 
-        # PATHS
+        # PATHS AND FILENAMES
         self.DATA_DIR_PATH = Path("./data/")
         self.CONFIG_FILE_PATH = Path("./config/config.ini")
+        self.SAVED_DATA_EXTENSION = ".csv"  # .json, .pkl.xz, .csv
+        self.LLM_DATA_FILENAME_ENDING = "llm_data" + self.SAVED_DATA_EXTENSION
+        self.METRICS_LLM_FILENAME_ENDING = "metrics_llm" + self.SAVED_DATA_EXTENSION
+        self.METRICS_MONITORING_FILENAME_ENDING = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
 
         self._init_paths()
 
