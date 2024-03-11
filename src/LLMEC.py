@@ -17,8 +17,13 @@ import subprocess
 import sys
 import time
 
+import ijson
 import matplotlib.pyplot as plt
 import pandas as pd
+
+# from deepeval import assert_test, evaluate
+# from deepeval.metrics import AnswerRelevancyMetric
+# from deepeval.test_case import LLMTestCase
 
 from config import config
 from LLMAPIClient import LLMAPIClient
@@ -28,7 +33,7 @@ def run_prompt_with_energy_monitoring_with_prometheus(
     model_name="mistral",
     prompt="How can we use Artificial Intelligence for a better society?",
     stream=False,
-    save_data=False,
+    save_power_data=False,
 ):
     """Demonstrates how to use the LLMAPIClient to send a request to the Ollama API.
 
@@ -63,7 +68,7 @@ def run_prompt_with_energy_monitoring_with_prometheus(
         end_time=end_time,
     )
 
-    if save_data:
+    if save_power_data:
         timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
         with open(config.DATA_DIR_PATH + f"llm_response_{timestamp_filename}.json", "w") as f:
             json.dump(data, f)
@@ -96,17 +101,21 @@ class LLMEC():
 
     def run_prompt_with_energy_monitoring(
         self,
-        model_name=None,
         prompt="How can we use Artificial Intelligence for a better society?",
+        model_name=None,
         stream=False,
-        save_data=False,
+        save_power_data=False,
+        plot_power_usage=False,
     ):
         """Demonstrates how to use the LLMAPIClient to send a request to the Ollama API.
 
         Args:
-            model_name (str, optional): The model name for the request. Defaults to "mistral".
-            prompt (str): The prompt to be sent.
-            stream (bool, optional): Whether to stream the response. Defaults to False.
+            prompt (str or list of str): The prompt(s) to be sent to the LLM.
+            model_name (str, default=False): The model name for the request. Defaults to "mistral".
+            stream (bool, default=False): Whether to stream the response. Defaults to False.
+            save_power_data (bool, default=False): Save power usage data to file.
+            plot_power_usage (bool, default=False): Plot power usage.
+            TODO: batch_mode (bool, default=False): 
         """
 
         if model_name is None:
@@ -118,86 +127,92 @@ class LLMEC():
             api_url=llm_api_url, model_name=model_name, role="user"
         )
 
-        # Start power measurements
-        if self.verbosity > 0:
-            print("Starting power measurements...")
+        if isinstance(prompt, str):
+            prompts = [prompt]
 
-        metrics_process = subprocess.Popen(
-            [
-                "scaphandre",
-                "json",
-                "--step", "0",
-                "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
-                "--resources",
-                "--process-regex", "ollama",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        time.sleep(config.MONITORING_START_DELAY)
+        for p in prompts: 
 
-        # Prompt LLM
-        if self.verbosity > 0:
-            print("Calling LLM service...")
-        data = ollama_client.call_api(prompt=prompt, stream=stream)
-        end_time = datetime.datetime.now()
-
-        if not data:
-            print("Failed to get a response.")
-            sys.exit(1)
-
-        if self.verbosity > 0:
-            print("Received response from LLM service.")
-
-        # Collect power measurements
-        time.sleep(config.MONITORING_END_DELAY)
-        metrics_process.terminate()
-        if self.verbosity > 0:
-            print("Power measurements stopped.")
-        metrics_stream = metrics_process.stdout.readlines()[-1].decode("utf-8")
-        metrics = parse_json_objects(metrics_stream)
-        metrics_per_process = self._parse_metrics(metrics)
-
-        for cmdline, specific_process in metrics_per_process.items():
-            specific_process.set_index("timestamp", inplace=True)
-            if config.LLM_SERVICE_KEYWORD in cmdline:
-                metrics_llm = specific_process
-            if config.MONITORING_SERVICE_KEYWORD in cmdline:
-                metrics_monitoring = specific_process
-
-        # plot_metrics(metrics_llm, metrics_monitoring)
-
-        energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
-
-        for cmdline, energy_consumption in energy_consumption_dict.items():
-            # print(f"Energy consumption for cmdline '{cmdline[:10]}...': {energy_consumption} kWh")
-            if config.LLM_SERVICE_KEYWORD in cmdline:
-                data["energy_consumption_llm"] = energy_consumption
-            if config.MONITORING_SERVICE_KEYWORD in cmdline:
-                data["energy_consumption_monitoring"] = energy_consumption
-
-        data_df = pd.DataFrame.from_dict([data])
-
-        if save_data:
+            # Start power measurements
             if self.verbosity > 0:
-                print("Saving data...")
+                print("Starting power measurements...")
 
-            timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-            llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.LLM_DATA_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
-            metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
-            metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME_ENDING}{config.SAVED_DATA_EXTENSION}"
+            metrics_process = subprocess.Popen(
+                [
+                    "scaphandre",
+                    "json",
+                    "--step", "0",
+                    "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
+                    "--resources",
+                    "--process-regex", "ollama",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            time.sleep(config.MONITORING_START_DELAY)
 
-            with open(llm_data_filename, "w") as f:
-                self._save_data(data_df, llm_data_filename)
+            # Prompt LLM
+            if self.verbosity > 0:
+                print("Calling LLM service...")
+            data = ollama_client.call_api(prompt=p, stream=stream)
+            end_time = datetime.datetime.now()
 
-            with open(metrics_llm_filename, "w") as f:
-                self._save_data(metrics_llm, metrics_llm_filename)
-
-            with open(metrics_monitoring_filename, "w") as f:
-                self._save_data(metrics_monitoring, metrics_monitoring_filename)
+            if not data:
+                print("Failed to get a response.")
+                sys.exit(1)
 
             if self.verbosity > 0:
-                print(f"Data saved with timestamp {timestamp_filename}")
+                print("Received response from LLM service.")
+
+            # Collect power measurements
+            time.sleep(config.MONITORING_END_DELAY)
+            metrics_process.terminate()
+            if self.verbosity > 0:
+                print("Power measurements stopped.")
+            metrics_stream = metrics_process.stdout.readlines()[-1].decode("utf-8")
+            metrics = parse_json_objects(metrics_stream)
+            metrics_per_process = self._parse_metrics(metrics)
+
+            for cmdline, specific_process in metrics_per_process.items():
+                specific_process.set_index("timestamp", inplace=True)
+                if config.LLM_SERVICE_KEYWORD in cmdline:
+                    metrics_llm = specific_process
+                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    metrics_monitoring = specific_process
+
+            if plot_power_usage:
+                plot_metrics(metrics_llm, metrics_monitoring)
+
+            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
+
+            for cmdline, energy_consumption in energy_consumption_dict.items():
+                # print(f"Energy consumption for cmdline '{cmdline[:10]}...': {energy_consumption} kWh")
+                if config.LLM_SERVICE_KEYWORD in cmdline:
+                    data["energy_consumption_llm"] = energy_consumption
+                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    data["energy_consumption_monitoring"] = energy_consumption
+
+            data_df = pd.DataFrame.from_dict([data])
+
+            if save_power_data:
+                if self.verbosity > 0:
+                    print("Saving data...")
+
+                timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
+                llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.LLM_DATA_FILENAME}"
+                metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_FILENAME}"
+                metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME}"
+
+                with open(llm_data_filename, "w") as f:
+                    self._save_data(data_df, llm_data_filename)
+
+                with open(metrics_llm_filename, "w") as f:
+                    self._save_data(metrics_llm, metrics_llm_filename)
+
+                with open(metrics_monitoring_filename, "w") as f:
+                    self._save_data(metrics_monitoring, metrics_monitoring_filename)
+
+                if self.verbosity > 0:
+                    print(f"Data saved with timestamp {timestamp_filename}")
 
         return data_df
 
@@ -228,6 +243,42 @@ class LLMEC():
         metrics_per_process = split_dataframe_by_column(metrics_structured, "cmdline")
 
         return metrics_per_process
+
+
+    def run_experiment(self,
+                       dataset_path=None,
+                       prompts=None,
+                       # experiment_name,
+        ):
+
+        if dataset_path:
+            if dataset_path.endswith(".json"):
+                raise ValueError("json format not yet supported.")
+                # with open(dataset_path, "rb") as f:
+                #     for record in ijson.items(f, "item"):
+            elif dataset_path.endswith(".jsonl"):
+                with open(dataset_path, "rb") as f:
+                    for line in f.readlines():
+                        obj = json.loads(line)
+                        for conv in obj["conversations"]:
+                            if conv["user"] == "human":
+                                prompt = conv["text"]
+                                print(prompt)
+                                df = self.run_prompt_with_energy_monitoring(
+                                        prompt=prompt,
+                                        save_power_data=True,
+                                )
+                                print(df)
+                                print("============")
+            else:
+                raise ValueError("Dataset must be in json or jsonl format.")
+
+            # Read dataset
+        elif prompts:
+            pass
+            # Use prompts to run experiment
+        else:
+            raise ValueError("No dataset or prompts given. Cannot run experiment.")
                 
 def plot_metrics(metrics_llm, metrics_monitoring):
     """Plot metrics for a single prompt-response."""
@@ -388,6 +439,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 if __name__ == "__main__":
 
     llm = LLMEC()
-    llm.run_prompt_with_energy_monitoring(
-        prompt="What is the capital in France?", save_data=True
-    )
+    llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
+    # llm.run_prompt_with_energy_monitoring(
+    #     prompt="What is the capital in France?", save_power_data=True
+    # )

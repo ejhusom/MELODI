@@ -26,9 +26,10 @@ class Config:
         self.DATA_DIR_PATH = Path("./data/")
         self.CONFIG_FILE_PATH = Path("./config/config.ini")
         self.SAVED_DATA_EXTENSION = ".csv"  # .json, .pkl.xz, .csv
-        self.LLM_DATA_FILENAME_ENDING = "llm_data" + self.SAVED_DATA_EXTENSION
-        self.METRICS_LLM_FILENAME_ENDING = "metrics_llm" + self.SAVED_DATA_EXTENSION
-        self.METRICS_MONITORING_FILENAME_ENDING = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
+        self.LLM_DATA_FILENAME = "llm_data" + self.SAVED_DATA_EXTENSION
+        self.METRICS_LLM_FILENAME = "metrics_llm" + self.SAVED_DATA_EXTENSION
+        self.METRICS_MONITORING_FILENAME = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
+        self.MAIN_DATASET_PATH = self.DATA_DIR_PATH / "dataset.csv"
 
         self._init_paths()
 
