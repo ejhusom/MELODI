@@ -10,6 +10,7 @@ data/
 *.txt
 *.csv
 llm_response*
+output.json
 
 # doconce:
 .*_html_file_collection

@@ -20,7 +20,7 @@ class Config:
         self.LLM_SERVICE_KEYWORD = "ollamaserve"
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 1.0
-        self.MONITORING_END_DELAY = 1.0
+        self.MONITORING_END_DELAY = 2.0
 
         # PATHS AND FILENAMES
         self.DATA_DIR_PATH = Path("./data/")
@@ -30,6 +30,7 @@ class Config:
         self.METRICS_LLM_FILENAME = "metrics_llm" + self.SAVED_DATA_EXTENSION
         self.METRICS_MONITORING_FILENAME = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
         self.MAIN_DATASET_PATH = self.DATA_DIR_PATH / "dataset.csv"
+        self.METRICS_STREAM_TEMP_FILE = "output.json"
 
         self._init_paths()
 

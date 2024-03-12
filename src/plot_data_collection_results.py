@@ -69,7 +69,8 @@ def plot_data(df):
         method="pearson",
         numeric_only=True,
     ).round(2)
-    sns.heatmap(corr, annot=True)
+    sns.heatmap(corr, annot=True, vmin=-1.0, vmax=1.0, cmap="RdBu")
+    plt.tight_layout()
     plt.show()
 
 

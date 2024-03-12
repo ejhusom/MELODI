@@ -144,15 +144,18 @@ class LLMEC():
                     "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
                     "--resources",
                     "--process-regex", "ollama",
+                    "--file", config.METRICS_STREAM_TEMP_FILE,
                 ],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
+                text=True
             )
             time.sleep(config.MONITORING_START_DELAY)
 
             # Prompt LLM
             if self.verbosity > 0:
                 print("Calling LLM service...")
+            start_time = datetime.datetime.now()
             data = ollama_client.call_api(prompt=p, stream=stream)
             end_time = datetime.datetime.now()
 
@@ -166,11 +169,30 @@ class LLMEC():
             # Collect power measurements
             time.sleep(config.MONITORING_END_DELAY)
             metrics_process.terminate()
+
             if self.verbosity > 0:
                 print("Power measurements stopped.")
-            metrics_stream = metrics_process.stdout.readlines()[-1].decode("utf-8")
+
+            with open( config.METRICS_STREAM_TEMP_FILE, "r") as f:
+                metrics_stream = f.read()
+
             metrics = parse_json_objects(metrics_stream)
             metrics_per_process = self._parse_metrics(metrics)
+
+            # print("==============================")
+            # a = datetime.datetime.fromtimestamp(
+            #         metrics_per_process["ollamaserve"]["timestamp"].iloc[0]
+            # )
+            # b = datetime.datetime.fromtimestamp(
+            #         metrics_per_process["ollamaserve"]["timestamp"].iloc[-1]
+            # )
+            # print("Start time: ", start_time)
+            # print("End time: ", start_time)
+            # print("Duration: ", end_time - start_time)
+            # print("scaph Start time: ", a)
+            # print("scaph End time: ", b)
+            # print("scaph Duration: ", b - a)
+            # print("==============================")
 
             for cmdline, specific_process in metrics_per_process.items():
                 specific_process.set_index("timestamp", inplace=True)
@@ -263,13 +285,11 @@ class LLMEC():
                         for conv in obj["conversations"]:
                             if conv["user"] == "human":
                                 prompt = conv["text"]
-                                print(prompt)
                                 df = self.run_prompt_with_energy_monitoring(
                                         prompt=prompt,
                                         save_power_data=True,
+                                        plot_power_usage=False,
                                 )
-                                print(df)
-                                print("============")
             else:
                 raise ValueError("Dataset must be in json or jsonl format.")
 
@@ -298,8 +318,8 @@ def plot_metrics(metrics_llm, metrics_monitoring):
     )
     # metrics_monitoring["consumption"].plot(color="red")
     # metrics_llm["consumption"].plot()
-    plt.xlabel("Power consumption (microwatts)")
-    plt.ylabel("Timestamps")
+    plt.xlabel("Timestamps")
+    plt.ylabel("Power consumption (microwatts)")
     plt.legend()
     plt.show()
 
@@ -440,6 +460,7 @@ if __name__ == "__main__":
 
     llm = LLMEC()
     llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
+    # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(
     #     prompt="What is the capital in France?", save_power_data=True
     # )
