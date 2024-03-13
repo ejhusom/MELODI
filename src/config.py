@@ -21,6 +21,10 @@ class Config:
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 1.0
         self.MONITORING_END_DELAY = 2.0
+        self.OPENAI_API_COMPATIBLE_SERVICES = [
+                "llamafile",
+                "llama.cpp",
+        ]
 
         # PATHS AND FILENAMES
         self.DATA_DIR_PATH = Path("./data/")

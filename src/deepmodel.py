@@ -9,14 +9,25 @@ Created:
     2024-03-11
 
 """
+import matplotlib.pyplot as plt
 import pandas as pd
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from config import config
+
+def plot_true_vs_pred(y_true, y_pred):
+
+    plt.figure(figsize=(10, 10))
+    plt.scatter(y_true, y_pred)
+    plt.xlabel("True values")
+    plt.ylabel("Predicted values")
+    plt.show()
+    plt.savefig("true_vs_pred.png")
 
 # Load dataset
 data = pd.read_csv(config.MAIN_DATASET_PATH)
@@ -104,7 +115,7 @@ criterion = nn.MSELoss()
 optimizer = Adam(model.parameters())
 
 # Training loop
-num_epochs = 10
+num_epochs = 30
 
 for epoch in range(num_epochs):
     model.train()
@@ -120,13 +131,20 @@ for epoch in range(num_epochs):
 
 model.eval()
 total_loss = 0
+predictions = []
+actuals = []
 with torch.no_grad():
     for texts, labels in test_loader:
         texts, labels = texts.to(device), labels.to(device)
         outputs = model(texts).squeeze()
         loss = criterion(outputs, labels)
         total_loss += loss.item()
+        predictions.extend(outputs.cpu().numpy())  # Store predictions
+        actuals.extend(labels.cpu().numpy())  # Store actual values
 
 print(f'Test Loss: {total_loss / len(test_loader)}')
 
-
+# Calculate R^2 score
+r2 = r2_score(actuals, predictions)
+print(f'R^2 Score: {r2}')
+plot_true_vs_pred(actuals, predictions)

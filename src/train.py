@@ -57,7 +57,7 @@ def simple_models():
     model_pipeline = Pipeline([
         ('vect', TfidfVectorizer()),
         ('impute', SimpleImputer(strategy='mean')),
-        # ('clf', RandomForestRegressor(random_state=42))
+        ('clf', RandomForestRegressor(random_state=42))
         # ('clf', xgb.XGBRegressor())
     ])
 

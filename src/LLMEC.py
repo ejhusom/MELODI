@@ -27,51 +27,6 @@ import pandas as pd
 
 from config import config
 from LLMAPIClient import LLMAPIClient
-from PrometheusClient import PrometheusClient
-
-def run_prompt_with_energy_monitoring_with_prometheus(
-    model_name="mistral",
-    prompt="How can we use Artificial Intelligence for a better society?",
-    stream=False,
-    save_power_data=False,
-):
-    """Demonstrates how to use the LLMAPIClient to send a request to the Ollama API.
-
-    Args:
-        model_name (str, optional): The model name for the request. Defaults to "mistral".
-        prompt (str): The prompt to be sent.
-        stream (bool, optional): Whether to stream the response. Defaults to False.
-    """
-
-    # LLM parameters
-    llm_api_url = "http://localhost:11434/api/chat"
-    ollama_client = LLMAPIClient(
-        api_url=llm_api_url, model_name=model_name, role="user"
-    )
-
-    # Prometheus parameters
-    prom_client = PrometheusClient()
-    metric_name = 'scaph_process_power_consumption_microwatts{cmdline=~".*ollama.*"}'
-
-    # Prompt LLM
-    data = ollama_client.call_api(prompt=prompt, stream=stream)
-    end_time = datetime.datetime.now()
-    if data:
-        print(data)
-    else:
-        print("Failed to get a response.")
-        sys.exit(1)
-
-    metric_data = prom.get_metric_range_data(
-        metric_name=metric_name,
-        start_time=data["created_at"],
-        end_time=end_time,
-    )
-
-    if save_power_data:
-        timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
-        with open(config.DATA_DIR_PATH + f"llm_response_{timestamp_filename}.json", "w") as f:
-            json.dump(data, f)
 
 class LLMEC():
 
@@ -102,29 +57,37 @@ class LLMEC():
     def run_prompt_with_energy_monitoring(
         self,
         prompt="How can we use Artificial Intelligence for a better society?",
+        llm_service=None,
+        llm_api_url=None,
         model_name=None,
         stream=False,
         save_power_data=False,
         plot_power_usage=False,
     ):
-        """Demonstrates how to use the LLMAPIClient to send a request to the Ollama API.
+        """Prompts LLM and monitors energy consumption.
 
         Args:
             prompt (str or list of str): The prompt(s) to be sent to the LLM.
-            model_name (str, default=False): The model name for the request. Defaults to "mistral".
+            llm_service (str, default=None): The LLM service to use.
+            llm_api_url (str, default=None): The API URL of the LLM service.
+            model_name (str, default=None): The model name for the request. Defaults to "mistral".
             stream (bool, default=False): Whether to stream the response. Defaults to False.
             save_power_data (bool, default=False): Save power usage data to file.
             plot_power_usage (bool, default=False): Plot power usage.
             TODO: batch_mode (bool, default=False): 
         """
+        if llm_service is None:
+            llm_service = self.config.get("General", "llm_service", fallback="ollama")
+
+        if llm_api_url is None:
+            llm_api_url = self.config.get("General", "llm_api_url", fallback="http://localhost:11434/api/chat")
 
         if model_name is None:
             model_name = self.config.get("General", "model_name", fallback="mistral")
 
         # LLM parameters
-        llm_api_url = "http://localhost:11434/api/chat"
-        ollama_client = LLMAPIClient(
-            api_url=llm_api_url, model_name=model_name, role="user"
+        llm_client = LLMAPIClient(
+            llm_service=llm_service, api_url=llm_api_url, model_name=model_name, role="user"
         )
 
         if isinstance(prompt, str):
@@ -156,7 +119,7 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Calling LLM service...")
             start_time = datetime.datetime.now()
-            data = ollama_client.call_api(prompt=p, stream=stream)
+            data = llm_client.call_api(prompt=p, stream=stream)
             end_time = datetime.datetime.now()
 
             if not data:

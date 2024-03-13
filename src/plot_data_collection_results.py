@@ -75,6 +75,6 @@ def plot_data(df):
 
 
 if __name__ == '__main__':
-    df = read_data()
+    df = read_data(force_concatenation=True)
     print(df.info())
     plot_data(df)

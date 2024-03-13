@@ -15,6 +15,7 @@ Created:
 import json
 import requests
 
+from config import config
 
 class LLMAPIClient:
     """A client for interacting with LLM (Large Language Model) APIs such as Ollama.
@@ -27,17 +28,19 @@ class LLMAPIClient:
 
     def __init__(
         self,
+        llm_service,
         api_url,
         model_name,
         role="user",
     ):
         """Initialize the API client with a specific API URL, model name, and role."""
 
+        self.llm_service = llm_service
         self.api_url = api_url
         self.model_name = model_name
         self.role = role
 
-    def call_api(self, prompt, model_name=None, role=None, stream=False):
+    def call_api(self, prompt, role=None, stream=False):
         """Send a request to the API with the given prompt, model name, and role.
         
         Args:
@@ -50,13 +53,11 @@ class LLMAPIClient:
             tuple: A tuple containing the API response and extracted metadata as a dictionary.
         """
 
-        if model_name is None:
-            model_name = self.model_name
         if role is None:
             role = self.role
 
         data = {
-            "model": model_name, 
+            "model": self.model_name, 
             "messages": [{"role": role, "content": prompt}],
             "stream": stream
         }
@@ -70,17 +71,42 @@ class LLMAPIClient:
 
         response_json = json.loads(response.text)
 
-        data = {
-            "model_name": response_json.get("model"),
-            "created_at": response_json.get("created_at"),
-            "total_duration": response_json.get("total_duration"),
-            "load_duration": response_json.get("load_duration"),
-            "prompt_token_length": response_json.get("prompt_eval_count"),
-            "prompt_duration": response_json.get("prompt_eval_duration"),
-            "response_token_length": response_json.get("eval_count"),
-            "response_duration": response_json.get("eval_duration"),
-            "prompt": prompt,
-            "response": response_json.get("message").get("content"),
-        }
+        if self.llm_service == "ollama":
+            data = {
+                "model_name": self.model_name,
+                "created_at": response_json.get("created_at"),
+                "total_duration": response_json.get("total_duration"),
+                "load_duration": response_json.get("load_duration"),
+                "prompt_token_length": response_json.get("prompt_eval_count"),
+                "prompt_duration": response_json.get("prompt_eval_duration"),
+                "response_token_length": response_json.get("eval_count"),
+                "response_duration": response_json.get("eval_duration"),
+                "prompt": prompt,
+                "response": response_json.get("message").get("content"),
+            }
+        elif self.llm_service in config.OPENAI_API_COMPATIBLE_SERVICES:
+            # client = OpenAI(
+            #     base_url=self.api_url,
+            #     api_key = "sk-no-key-required"
+            # )
+            # completion = client.chat.completions.create(
+            #     model=self.model_name,
+            #     messages=[
+            #         {"role": role, "content": prompt}
+            #     ]
+            # )
+            # print(completion.choices[0].message)
+            data = {
+                "model_name": self.model_name,
+                "created_at": response_json.get("created"),
+                "total_duration": None,
+                "load_duration": None,
+                "prompt_token_length": response_json.get("usage").get("prompt_tokens"),
+                "prompt_duration": None,
+                "response_token_length": response_json.get("usage").get("completion_tokens"),
+                "response_duration": None,
+                "prompt": prompt,
+                "response": response_json.get("choices")[0].get("message").get("content"),
+            }
 
         return data
