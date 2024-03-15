@@ -12,4 +12,5 @@
 ```
 sudo chmod -R a+r /sys/class/powercap/intel-rapl
 ```
-4. Run `run_experiment.py`.
+4. Define path to dataset at the bottom of `LLMEC.py`.
+5. Run `LLMEC.py`.
