@@ -251,7 +251,7 @@ class LLMEC():
                                 df = self.run_prompt_with_energy_monitoring(
                                         prompt=prompt,
                                         save_power_data=True,
-                                        plot_power_usage=False,
+                                        plot_power_usage=True,
                                 )
             else:
                 raise ValueError("Dataset must be in json or jsonl format.")
@@ -267,12 +267,12 @@ def plot_metrics(metrics_llm, metrics_monitoring):
     """Plot metrics for a single prompt-response."""
 
     plt.figure()
-    plt.plot(
-            metrics_monitoring.index,
-            metrics_monitoring["consumption"],
-            ".-",
-            label="Monitoring service",
-    )
+    # plt.plot(
+    #         metrics_monitoring.index,
+    #         metrics_monitoring["consumption"],
+    #         ".-",
+    #         label="Monitoring service",
+    # )
     plt.plot(
             metrics_llm.index,
             metrics_llm["consumption"],
