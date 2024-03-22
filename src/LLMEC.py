@@ -142,6 +142,9 @@ class LLMEC():
                 metrics_stream = f.read()
 
             metrics = parse_json_objects(metrics_stream)
+            if metrics == []:
+                print("Found no metrics to parse.")
+                continue
             metrics_per_process = self._parse_metrics(metrics)
 
             # print("==============================")
@@ -237,10 +240,7 @@ class LLMEC():
             df = flatten_data(consumers, split_key="resources_usage")
             dfs.append(df)
 
-        try:
-            metrics_structured = pd.concat(dfs)
-        except ValueError:
-            breakpoint()
+        metrics_structured = pd.concat(dfs)
         metrics_per_process = split_dataframe_by_column(metrics_structured, "cmdline")
 
         return metrics_per_process
@@ -427,40 +427,6 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
     for cmdline, df in df_dict.items():
         if not df.empty:
-            # # V1 ##############################################
-            # # Convert timestamps to datetime objects
-            # df["datetime"] = pd.to_datetime(df.index, unit="s")
-            # # Calculate the duration in hours
-            # duration_hours = (df["datetime"].max() - df["datetime"].min()).total_seconds() / 3600.0
-
-            # # Handle the case where duration might be zero to avoid division by zero error
-            # if duration_hours > 0:
-            #     # Calculate total power consumption in microwatts
-            #     total_power_microwatts = df["consumption"].sum()
-
-            #     # Convert total power consumption to kWh
-            #     energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**9
-
-            #     # Store the result in the dictionary
-            #     energy_consumption_dict[cmdline] = energy_consumption_kwh
-
-            # V2 ##############################################
-            # df["timestamp"] = pd.to_numeric(df.index)
-            # duration_zero = (df['timestamp'].iloc[-1] - df['timestamp'].iloc[0] == 0)
-
-            # if not duration_zero:
-            #     # Calculate the time intervals between consecutive measurements
-            #     df["delta_t"] = df["timestamp"].diff().fillna(0)
-
-            #     # Calculate the energy for each interval in microwatt-seconds
-            #     df["energy_muWs"] = df["consumption"] * df["delta_t"]
-
-            #     # Sum up the energy and convert to kWh (1 kWh = 3.6e12 microwatt-seconds)
-            #     energy_consumption_kwh = df["energy_muWs"].sum() / 3.6e12
-            #     # Store the result in the dictionary
-            #     energy_consumption_dict[cmdline] = energy_consumption_kwh
-
-            # V3 ##############################################
             # Convert timestamps to datetime objects
             df["datetime"] = pd.to_datetime(df.index, unit="s")
             # Calculate the duration in hours
