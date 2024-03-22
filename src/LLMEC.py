@@ -172,7 +172,7 @@ class LLMEC():
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
-                # print(f"Energy consumption for cmdline '{cmdline[:10]}...': {energy_consumption} kWh")
+                # print(f"Energy consumption for cmdline *{cmdline[:10]}...*: {energy_consumption} kWh")
                 if config.LLM_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_llm"] = energy_consumption
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
@@ -212,14 +212,15 @@ class LLMEC():
                 try:
                     data.to_csv(filename)
                 except CSVErr as e:
-                    try:
-                        print("Encountered CSV error:", e)
-                        print("Retrying with escape character set...")
-                        # If error, retry with escapechar
-                        data.to_csv(filename, escapechar='\\')
-                    except CSVErr as e:
-                        # If still an error, skip saving
-                        print("Failed to save with escape character. Skipping save:", e)
+                    print("Failed to save with escape character. Skipping save:", e)
+                    # try:
+                    #     print("Encountered CSV error:", e)
+                    #     print("Retrying with escape character set...")
+                    #     # If error, retry with escapechar
+                    #     data.to_csv(filename, escapechar=*\\*)
+                    # except CSVErr as e:
+                    #     # If still an error, skip saving
+                    #     print("Failed to save with escape character. Skipping save:", e)
             elif "json" in os.path.splitext(filename)[-1]:
                 data.to_json(filename)
             else:
@@ -313,10 +314,10 @@ def plot_metrics(metrics_llm, metrics_monitoring):
     plt.show()
 
 def parse_json_objects_from_file(file_path):
-    """Wrapper for 'parse_json_objects', to allow for passing file name."""
+    """Wrapper for *parse_json_objects*, to allow for passing file name."""
 
     # Open and read the content of the file
-    with open(file_path, 'r') as file:
+    with open(file_path, *r*) as file:
         content = file.read()
 
     objects = parse_json_objects(content)
@@ -349,7 +350,7 @@ def parse_json_objects(content):
             objects.append(obj)
             start_idx += end_idx
         except json.JSONDecodeError:
-            break  # Stop parsing as we've either reached the end or found incomplete JSON
+            break  # Stop parsing as we*ve either reached the end or found incomplete JSON
 
     return objects
 
@@ -367,12 +368,12 @@ def flatten_data(data, split_key):
     """
     # Iterate over each record in the provided data list
     for record in data:
-        # Check if there's a nested dictionary that needs flattening
-        # Here 'resources_usage' is the nested dictionary we expect based on the given structure
+        # Check if there*s a nested dictionary that needs flattening
+        # Here *resources_usage* is the nested dictionary we expect based on the given structure
         if split_key in record:
             # Extract and remove the nested dictionary
             split_key_items = record.pop(split_key)
-            # Merge the nested dictionary's key-value pairs into the main dictionary
+            # Merge the nested dictionary*s key-value pairs into the main dictionary
             for key, value in split_key_items.items():
                 record[key] = value
 
@@ -423,39 +424,44 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
     for cmdline, df in df_dict.items():
         if not df.empty:
-            # V1 ##############################################
-            # Convert timestamps to datetime objects
-            df['datetime'] = pd.to_datetime(df.index, unit='s')
-            # Calculate the duration in hours
-            duration_hours = (df['datetime'].max() - df['datetime'].min()).total_seconds() / 3600.0
+            # # V1 ##############################################
+            # # Convert timestamps to datetime objects
+            # df[*datetime*] = pd.to_datetime(df.index, unit=*s*)
+            # # Calculate the duration in hours
+            # duration_hours = (df[*datetime*].max() - df[*datetime*].min()).total_seconds() / 3600.0
 
-            # Handle the case where duration might be zero to avoid division by zero error
-            if duration_hours > 0:
-                # Calculate total power consumption in microwatts
-                total_power_microwatts = df['consumption'].sum()
+            # # Handle the case where duration might be zero to avoid division by zero error
+            # if duration_hours > 0:
+            #     # Calculate total power consumption in microwatts
+            #     total_power_microwatts = df[*consumption*].sum()
 
-                # Convert total power consumption to kWh
-                energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**9
+            #     # Convert total power consumption to kWh
+            #     energy_consumption_kwh = (total_power_microwatts * duration_hours) / 10**9
 
+            #     # Store the result in the dictionary
+            #     energy_consumption_dict[cmdline] = energy_consumption_kwh
+
+            # V2 ##############################################
+            duration_zero = (df['timestamp'].iloc[-1] - df['timestamp'].iloc[0] == 0)
+
+            if not duration_zero:
+                # Calculate the time intervals between consecutive measurements
+                df[*timestamp*] = pd.to_numeric(df[*timestamp*])
+                df[*delta_t*] = df[*timestamp*].diff().fillna(0)
+
+                # Calculate the energy for each interval in microwatt-seconds
+                df[*energy_muWs*] = df[*consumption*] * df[*delta_t*]
+
+                # Sum up the energy and convert to kWh (1 kWh = 3.6e12 microwatt-seconds)
+                energy_consumption_kwh = df[*energy_muWs*].sum() / 3.6e12
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
-
-            # # V2 ##############################################
-            # # Calculate the time intervals between consecutive measurements
-            # df['timestamp'] = pd.to_numeric(df['timestamp'])
-            # df['delta_t'] = df['timestamp'].diff().fillna(0)
-
-            # # Calculate the energy for each interval in microwatt-seconds
-            # df['energy_muWs'] = df['consumption'] * df['delta_t']
-
-            # # Sum up the energy and convert to kWh (1 kWh = 3.6e12 microwatt-seconds)
-            # total_energy_kWh = df['energy_muWs'].sum() / 3.6e12
 
             else:
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
 
-    print(energy_consumption_dict)
+    print(energy_consumption_dict["ollamaserve"])
     return energy_consumption_dict
 
 
@@ -463,7 +469,8 @@ if __name__ == "__main__":
 
     llm = LLMEC()
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
-    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
+    llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(
