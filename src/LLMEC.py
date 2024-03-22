@@ -17,6 +17,8 @@ import subprocess
 import sys
 import time
 
+from _csv import Error as CSVErr
+
 import ijson
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -207,7 +209,17 @@ class LLMEC():
             if "pkl" in str(filename).split(os.extsep):
                 data.to_pickle(filename)
             elif "csv" in str(filename).split(os.extsep):
-                data.to_csv(filename)
+                try:
+                    data.to_csv(filename)
+                except CSVErr as e:
+                    try:
+                        print("Encountered CSV error:", e)
+                        print("Retrying with escape character set...")
+                        # If error, retry with escapechar
+                        data.to_csv(filename, escapechar='\\')
+                    except CSVErr as e:
+                        # If still an error, skip saving
+                        print("Failed to save with escape character. Skipping save:", e)
             elif "json" in os.path.splitext(filename)[-1]:
                 data.to_json(filename)
             else:
@@ -411,6 +423,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
     for cmdline, df in df_dict.items():
         if not df.empty:
+            # V1 ##############################################
             # Convert timestamps to datetime objects
             df['datetime'] = pd.to_datetime(df.index, unit='s')
             # Calculate the duration in hours
@@ -426,17 +439,31 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
+
+            # # V2 ##############################################
+            # # Calculate the time intervals between consecutive measurements
+            # df['timestamp'] = pd.to_numeric(df['timestamp'])
+            # df['delta_t'] = df['timestamp'].diff().fillna(0)
+
+            # # Calculate the energy for each interval in microwatt-seconds
+            # df['energy_muWs'] = df['consumption'] * df['delta_t']
+
+            # # Sum up the energy and convert to kWh (1 kWh = 3.6e12 microwatt-seconds)
+            # total_energy_kWh = df['energy_muWs'].sum() / 3.6e12
+
             else:
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
 
+    print(energy_consumption_dict)
     return energy_consumption_dict
 
 
 if __name__ == "__main__":
 
     llm = LLMEC()
-    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
+    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(
