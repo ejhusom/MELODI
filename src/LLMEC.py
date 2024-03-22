@@ -245,13 +245,27 @@ class LLMEC():
                 with open(dataset_path, "rb") as f:
                     for line in f.readlines():
                         obj = json.loads(line)
-                        for conv in obj["conversations"]:
-                            if conv["user"] == "human":
-                                prompt = conv["text"]
+                        if "conversations" in obj:
+                            conversation_label = "conversations"
+                            role_label = "user"
+                            human_label = "human"
+                            content_label = "text"
+                        elif "messages" in obj:
+                            conversation_label = "messages"
+                            role_label = "role"
+                            human_label = "user"
+                            content_label = "content"
+                        else:
+                            print("Could not locate prompt in dataset.")
+                            sys.exit(1)
+
+                        for conv in obj[conversation_label]:
+                            if conv[role_label] == human_label:
+                                prompt = conv[content_label]
                                 df = self.run_prompt_with_energy_monitoring(
                                         prompt=prompt,
                                         save_power_data=True,
-                                        plot_power_usage=True,
+                                        plot_power_usage=False,
                                 )
             else:
                 raise ValueError("Dataset must be in json or jsonl format.")
@@ -422,7 +436,8 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 if __name__ == "__main__":
 
     llm = LLMEC()
-    llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
+    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
+    # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(
     #     prompt="What is the capital in France?", save_power_data=True

@@ -18,6 +18,7 @@ import pandas as pd
 import seaborn as sns
 
 from config import config
+from feature_extraction import extract_features
 
 
 def read_data(force_concatenation=False):
@@ -54,17 +55,23 @@ def plot_data(df):
     df.plot()
     plt.show()
 
-    corr_columns = [
-            "total_duration",
-            "load_duration",
-            "prompt_token_length",
-            "prompt_duration",
-            "response_token_length",
-            "response_duration",
-            "energy_consumption_monitoring",
-            "energy_consumption_llm",
-    ]
-    corr_df = pd.DataFrame(df, columns=corr_columns)
+def plot_correlations(df, limit_columns=False):
+
+    if limit_columns:
+        corr_columns = [
+                "total_duration",
+                "load_duration",
+                "prompt_token_length",
+                "prompt_duration",
+                "response_token_length",
+                "response_duration",
+                "energy_consumption_monitoring",
+                "energy_consumption_llm",
+        ]
+        corr_df = pd.DataFrame(df, columns=corr_columns)
+    else:
+        corr_df = df
+
     corr = corr_df.corr(
         method="pearson",
         numeric_only=True,
@@ -73,8 +80,31 @@ def plot_data(df):
     plt.tight_layout()
     plt.show()
 
+def plot_single_correlations(df):
+    # Calculate correlations with "energy_consumption_llm"
+    correlations = df.corrwith(df["energy_consumption_llm"], numeric_only=True).sort_values(ascending=False)
 
-if __name__ == '__main__':
+    # Drop the "energy_consumption_llm" correlation with itself
+    correlations.drop("energy_consumption_llm", inplace=True)
+
+    # Create a bar plot for visualizing correlations
+    plt.figure(figsize=(10, 8))
+    sns.barplot(x=correlations.values, y=correlations.index, palette="viridis")
+    plt.title("Feature Correlation with Energy Consumption of LLM")
+    plt.xlabel("Correlation Coefficient")
+    plt.ylabel("Features")
+
+    plt.show()
+
+if __name__ == "__main__":
+    print("Reading data...")
     df = read_data(force_concatenation=True)
     print(df.info())
-    plot_data(df)
+    # plot_data(df)
+    print("Extracting features...")
+    df_with_features = extract_features(df)
+    print("Plotting correlations...")
+    plot_single_correlations(df)
+    print("Saving data with extracted features...")
+    df_with_features.to_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)
+    print("Done!")

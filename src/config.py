@@ -34,6 +34,7 @@ class Config:
         self.METRICS_LLM_FILENAME = "metrics_llm" + self.SAVED_DATA_EXTENSION
         self.METRICS_MONITORING_FILENAME = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
         self.MAIN_DATASET_PATH = self.DATA_DIR_PATH / "dataset.csv"
+        self.MAIN_DATASET_WITH_FEATURES_PATH = self.DATA_DIR_PATH / "dataset_with_features.csv"
         self.METRICS_STREAM_TEMP_FILE = "output.json"
 
         self._init_paths()
