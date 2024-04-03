@@ -487,7 +487,7 @@ if __name__ == "__main__":
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_only.csv")
-    llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v1.csv")
+    llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v2.csv")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(

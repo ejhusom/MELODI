@@ -96,19 +96,62 @@ def plot_single_correlations(df):
 
     plt.show()
 
-    # from scipy.stats import pearsonr
+    #========================================================================================0
 
-    # # Get unique task types
-    # task_types = df['type'].unique()
+    import ast  # Import the Abstract Syntax Trees module to safely evaluate strings that contain Python literals
 
-    # # Calculate correlation for each task type
-    # for task in task_types:
-    #     try:
-    #         task_df = df[df['type'] == task]
-    #         correlation, _ = pearsonr(task_df['type'], task_df['energy_consumption_llm'])
-    #         print(f'Correlation between {task} and energy consumption: {correlation}')
-    #     except Exception as e:
-    #         print(e)
+    def clean_category(value):
+        try:
+            # Attempt to evaluate the string as a Python literal (e.g., converting "['Remembering']" to ['Remembering'])
+            evaluated_value = ast.literal_eval(value)
+            if isinstance(evaluated_value, list):
+                # If the evaluated value is a list, return its first element as the cleaned category
+                return evaluated_value[0]
+            else:
+                # If it's not a list, return the value as it is
+                return value
+        except:
+            # If there's any error in evaluating (meaning it's likely a normal string), just return the value
+            return value
+
+    # Apply the cleaning function to your 'TaskCategory' column
+    df['type'] = df['type'].apply(clean_category)
+
+    # Optionally, check for and convert any NaNs to a uniform representation (e.g., 'Unknown')
+    df['type'] = df['type'].fillna('Unknown')
+
+    import pandas as pd
+    from scipy import stats
+    import statsmodels.api as sm
+    from statsmodels.formula.api import ols
+    from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+    # # Sample data: Replace this with your actual dataset
+    # data = {
+    #     'TaskCategory': ['Remembering', 'Understanding', 'Remembering', 'Applying', 'Understanding', 'Analyzing', 'Remembering'],
+    #     'EnergyConsumption': [120.5, 110.2, 115.1, 130.2, 105.5, 125.3, 118.7]
+    # }
+
+    # df = pd.DataFrame(data)
+    df['type'] = df['type'].astype(str)
+
+    # It might also be a good idea to check for and drop any rows with missing values in these columns
+    df.dropna(subset=['type', 'energy_consumption_llm'], inplace=True)
+
+
+    # Perform ANOVA
+    anova_results = ols('energy_consumption_llm ~ C(type)', data=df).fit()
+    anova_table = sm.stats.anova_lm(anova_results, typ=2)
+    print(anova_table)
+
+    # If the p-value from ANOVA is significant, proceed with Tukey's HSD
+    if anova_table['PR(>F)'][0] < 0.05:
+        print("Significant differences found, proceeding with Tukey's HSD")
+        tukey = pairwise_tukeyhsd(endog=df['energy_consumption_llm'], groups=df['type'], alpha=0.05)
+        print(tukey)
+    else:
+        print("No significant differences found among categories.")
+
 
 if __name__ == "__main__":
     print("Reading data...")
