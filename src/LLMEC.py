@@ -65,6 +65,7 @@ class LLMEC():
         stream=False,
         save_power_data=False,
         plot_power_usage=False,
+        task_type="unknown",
     ):
         """Prompts LLM and monitors energy consumption.
 
@@ -181,6 +182,8 @@ class LLMEC():
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_monitoring"] = energy_consumption
 
+            data["type"] = task_type
+
             data_df = pd.DataFrame.from_dict([data])
 
             if save_power_data:
@@ -249,7 +252,7 @@ class LLMEC():
     def run_experiment(self,
                        dataset_path=None,
                        prompts=None,
-                       # experiment_name,
+                       task_type=None,
         ):
 
         if dataset_path:
@@ -283,8 +286,34 @@ class LLMEC():
                                         save_power_data=True,
                                         plot_power_usage=False,
                                 )
+            elif dataset_path.endswith(".csv"):
+                df = pd.read_csv(dataset_path)
+
+                if task_type:
+                    for prompt in df["prompt"]:
+                        df = self.run_prompt_with_energy_monitoring(
+                                prompt=prompt,
+                                save_power_data=True,
+                                plot_power_usage=False,
+                                task_type=task_type,
+                        )
+                elif "type" in df.columns:
+                    for index, row in df.iterrows():
+                        df = self.run_prompt_with_energy_monitoring(
+                                prompt=row["prompt"],
+                                save_power_data=True,
+                                plot_power_usage=False,
+                                task_type=row["type"],
+                        )
+                else:
+                    df = self.run_prompt_with_energy_monitoring(
+                            prompt=prompt,
+                            save_power_data=True,
+                            plot_power_usage=False,
+                            task_type="unknown"
+                    )
             else:
-                raise ValueError("Dataset must be in json or jsonl format.")
+                raise ValueError("Dataset must be in csv, json or jsonl format.")
 
             # Read dataset
         elif prompts:
@@ -456,7 +485,9 @@ if __name__ == "__main__":
     llm = LLMEC()
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
-    llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_only.csv")
+    llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v1.csv")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
     # llm.run_prompt_with_energy_monitoring(
