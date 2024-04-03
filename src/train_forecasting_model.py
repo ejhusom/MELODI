@@ -36,32 +36,19 @@ from tensorflow.keras.optimizers import Adam
 
 from config import config
 
-# Function to preprocess the data
-def preprocess_data(df, target_column, scale_features=False):
+def preprocess_data(df, target_column, scale_features=False, unique_val_threshold=10):
+    """
+    Preprocess the dataset with numerical, text, and categorical data.
 
-    # Exclude non-numeric values
-    # df = df.select_dtypes(exclude=["object", "category"])
-    # df = df.dropna()
+    Parameters:
+    - df: DataFrame, the dataset to preprocess.
+    - target_column: str, the name of the target column.
+    - scale_features: bool, whether to scale numerical features.
+    - unique_val_threshold: int, the threshold for distinguishing between text and categorical columns based on unique values.
 
-    # # Applying One-Hot Encoding to non-numeric columns
-    # df = pd.get_dummies(df, columns=non_numeric_columns)
-
-    unique_val_threshold = 10
-
-    columns_to_drop = [
-            # target_column,
-            "energy_consumption_monitoring",
-            "total_duration",
-            "response_duration",
-            "response_token_length",
-            "prompt_duration",
-            "index",
-            "load_duration",
-            "Unnamed: 0",
-    ]
-
-    df = df.drop(columns=columns_to_drop)
-    # y = df[target_column]
+    Returns:
+    - X_train, X_test, y_train, y_test: The split and preprocessed data.
+    """
 
     # Drop target column and rows with NA in target column
     df = df.dropna(subset=[target_column])
@@ -75,38 +62,24 @@ def preprocess_data(df, target_column, scale_features=False):
     text_columns = [col for col in potential_categorical if df[col].nunique() > unique_val_threshold]
     categorical_columns = list(set(potential_categorical) - set(text_columns))
 
-
     # Define transformers
-    transformers = []
-    if scale_features:
-        transformers.append(('num', StandardScaler(), numeric_columns))
-    if text_columns:
-        transformers.append(('text', TfidfVectorizer(), text_columns))
-    if categorical_columns:
-        transformers.append(('cat', OneHotEncoder(), categorical_columns))
+    transformers = [
+        ('num', StandardScaler(), numeric_columns),
+        ('text', TfidfVectorizer(), text_columns),
+        ('cat', OneHotEncoder(), categorical_columns)
+    ]
 
-    # Column Transformer
-    preprocessor = ColumnTransformer(transformers=transformers, remainder='passthrough')
+    # Column Transformer to apply transformations
+    preprocessor = ColumnTransformer(transformers=transformers, remainder='drop')  # Dropping other columns
 
     # Splitting the dataset
     X_train, X_test, y_train, y_test = train_test_split(df, y, test_size=0.2, random_state=42)
 
     # Applying the ColumnTransformer
-    # Note: This step now includes fitting the transformer, so it should be applied here rather than in the model pipeline.
     X_train = preprocessor.fit_transform(X_train)
     X_test = preprocessor.transform(X_test)
 
     return X_train, X_test, y_train, y_test
-
-    # # Splitting the dataset into training and testing sets
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # if scale_features:
-    #     scaler = StandardScaler()
-    #     X_train = scaler.fit_transform(X_train)
-    #     X_test = scaler.transform(X_test)
-
-    # return X_train, X_test, y_train, y_test
 
 def neural_network(input_shape=57):
     model = Sequential([
