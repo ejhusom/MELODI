@@ -96,6 +96,20 @@ def plot_single_correlations(df):
 
     plt.show()
 
+    # from scipy.stats import pearsonr
+
+    # # Get unique task types
+    # task_types = df['type'].unique()
+
+    # # Calculate correlation for each task type
+    # for task in task_types:
+    #     try:
+    #         task_df = df[df['type'] == task]
+    #         correlation, _ = pearsonr(task_df['type'], task_df['energy_consumption_llm'])
+    #         print(f'Correlation between {task} and energy consumption: {correlation}')
+    #     except Exception as e:
+    #         print(e)
+
 if __name__ == "__main__":
     print("Reading data...")
     df = read_data(force_concatenation=True)
