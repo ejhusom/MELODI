@@ -36,46 +36,129 @@ from tensorflow.keras.optimizers import Adam
 
 from config import config
 
-def preprocess_data(df, target_column, scale_features=False, unique_val_threshold=10):
-    """
-    Preprocess the dataset with numerical, text, and categorical data.
+# Function to preprocess the data
+def preprocess_data(df, target_column, scale_features=False, unique_val_threshold=7):
 
-    Parameters:
-    - df: DataFrame, the dataset to preprocess.
-    - target_column: str, the name of the target column.
-    - scale_features: bool, whether to scale numerical features.
-    - unique_val_threshold: int, the threshold for distinguishing between text and categorical columns based on unique values.
+    # Drop unrelated or irrelevant variables
+    columns_to_drop = [
+            "energy_consumption_monitoring",
+            "total_duration",
+            "response_duration",
+            "response_token_length",
+            "prompt_duration",
+            "index",
+            "load_duration",
+            "Unnamed: 0",
+            "created_at",
+            "response",
+            # "prompt",
+            # "text_standard",
+    ]
+    df = df.drop(columns=columns_to_drop)
 
-    Returns:
-    - X_train, X_test, y_train, y_test: The split and preprocessed data.
-    """
+    # df = df[[target_column, "prompt", "type"]]
 
     # Drop target column and rows with NA in target column
     df = df.dropna(subset=[target_column])
     y = df[target_column]
-    df = df.drop(columns=[target_column])
+    X = df.drop(columns=[target_column])
+    X = X[[
+        'prompt', 
+        'type',
+        "model_name",
+        # "total_duration",
+        # "load_duration",
+        "prompt_token_length",
+        # "prompt_duration",
+        # "response_token_length",
+        # "response_duration",
+        # "response",
+        # "energy_consumption_monitoring",
+        # "energy_consumption_llm",
+        "word_count",
+        "sentence_count",
+        "avg_word_length",
+        "word_diversity",
+        "unique_word_count",
+        "avg_sentence_length",
+        "punctuation_count",
+        "stop_word_count",
+        "long_word_count",
+        "named_entity_count",
+        "noun_count",
+        "verb_count",
+        "adj_count",
+        "adverb_count",
+        "pronoun_count",
+        "prop_adverbs",
+        "prop_pronouns",
+        "sentiment_polarity",
+        "sentiment_subjectivity",
+        "flesch_reading_ease",
+        "flesch_kincaid_grade",
+        "gunning_fog",
+        "smog_index",
+        "automated_readability_index",
+        "coleman_liau_index",
+        "linsear_write_formula",
+        "dale_chall_readability_score",
+        # "text_standard",
+        "spache_readability",
+        "mcalpine_eflaw",
+        "reading_time",
+        "fernandez_huerta",
+        "szigriszt_pazos",
+        "gutierrez_polini",
+        "crawford",
+        "osman",
+        "gulpease_index",
+        "wiener_sachtextformel",
+        "syllable_count",
+        "lexicon_count",
+        "char_count",
+        "letter_count",
+        "polysyllabcount",
+        "monosyllabcount",
+        "question_marks",
+        "exclamation_marks",
+        "sentence_embedding_variance",
+        "personal_pronouns",
+        "named_entities",
+        "adjectives",
+        "adverbs",
+        "length_x_complexity",
+        "questions_about_entities",
+        "desc_complexity_ratio",
+        "word_count_squared",
+        "avg_sentence_length_cubed",
+        "lexical_diversity",
+    ]]
 
     # Identify numeric, text, and categorical columns
-    numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    potential_categorical = df.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    text_columns = [col for col in potential_categorical if df[col].nunique() > unique_val_threshold]
+    numeric_columns = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    potential_categorical = X.select_dtypes(include=['object', 'category']).columns.tolist()
+    text_columns = [col for col in potential_categorical if X[col].nunique() > unique_val_threshold]
     categorical_columns = list(set(potential_categorical) - set(text_columns))
 
-    # Define transformers
-    transformers = [
-        ('num', StandardScaler(), numeric_columns),
-        ('text', TfidfVectorizer(), text_columns),
-        ('cat', OneHotEncoder(), categorical_columns)
-    ]
+    # X = X.drop(columns=text_columns)
 
-    # Column Transformer to apply transformations
-    preprocessor = ColumnTransformer(transformers=transformers, remainder='drop')  # Dropping other columns
+    # Define transformers
+    transformers = []
+    if scale_features:
+        transformers.append(('num', StandardScaler(), numeric_columns))
+    if text_columns:
+        transformers.append(('text', TfidfVectorizer(), "prompt"))
+    if categorical_columns:
+        transformers.append(('cat', OneHotEncoder(), categorical_columns))
+
+    # Column Transformer
+    preprocessor = ColumnTransformer(transformers=transformers, remainder='passthrough')
 
     # Splitting the dataset
-    X_train, X_test, y_train, y_test = train_test_split(df, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     # Applying the ColumnTransformer
+    # Note: This step now includes fitting the transformer, so it should be applied here rather than in the model pipeline.
     X_train = preprocessor.fit_transform(X_train)
     X_test = preprocessor.transform(X_test)
 
@@ -126,7 +209,7 @@ def train_and_evaluate(model_name, X_train, X_test, y_train, y_test):
     print(f"MAE: {mae}")
     print(f"R^2: {r2}")
 
-    if r2 > 0.5:
+    if r2 > 0.2:
         plot_true_vs_predicted(y_test, y_pred, model_name)
 
     return model, mse, mae, r2
@@ -144,7 +227,77 @@ def plot_true_vs_predicted(y_true, y_pred, model_name):
 
 def new_train(df):
     # Preparing the dataset
-    X = df[['prompt', 'type']]
+    X = df[[
+        'prompt', 
+        'type',
+        # "model_name",
+        # "total_duration",
+        # "load_duration",
+        "prompt_token_length",
+        # "prompt_duration",
+        # "response_token_length",
+        # "response_duration",
+        # "response",
+        # "energy_consumption_monitoring",
+        # "energy_consumption_llm",
+        # "word_count",
+        # "sentence_count",
+        # "avg_word_length",
+        # "word_diversity",
+        # "unique_word_count",
+        # "avg_sentence_length",
+        # "punctuation_count",
+        # "stop_word_count",
+        # "long_word_count",
+        # "named_entity_count",
+        # "noun_count",
+        # "verb_count",
+        # "adj_count",
+        # "adverb_count",
+        # "pronoun_count",
+        # "prop_adverbs",
+        # "prop_pronouns",
+        # "sentiment_polarity",
+        # "sentiment_subjectivity",
+        # "flesch_reading_ease",
+        # "flesch_kincaid_grade",
+        # "gunning_fog",
+        # "smog_index",
+        # "automated_readability_index",
+        # "coleman_liau_index",
+        # "linsear_write_formula",
+        "dale_chall_readability_score",
+        # "text_standard",
+        "spache_readability",
+        # "mcalpine_eflaw",
+        # "reading_time",
+        # "fernandez_huerta",
+        # "szigriszt_pazos",
+        # "gutierrez_polini",
+        "crawford",
+        # "osman",
+        # "gulpease_index",
+        # "wiener_sachtextformel",
+        # "syllable_count",
+        # "lexicon_count",
+        # "char_count",
+        # "letter_count",
+        # "polysyllabcount",
+        # "monosyllabcount",
+        # "question_marks",
+        # "exclamation_marks",
+        # "sentence_embedding_variance",
+        # "personal_pronouns",
+        # "named_entities",
+        # "adjectives",
+        # "adverbs",
+        # "length_x_complexity",
+        # "questions_about_entities",
+        # "desc_complexity_ratio",
+        # "word_count_squared",
+        # "avg_sentence_length_cubed",
+        # "lexical_diversity",
+    ]]
     y = df['energy_consumption_llm']
 
     # Splitting the dataset
@@ -159,9 +312,13 @@ def new_train(df):
 
     # Creating a modeling pipeline
     model = make_pipeline(preprocessor, RandomForestRegressor(n_estimators=100))
+    # model = make_pipeline(preprocessor, LinearRegression())
 
     # Training the model
     model.fit(X_train, y_train)
+
+    print(X_train)
+    print(y_train)
 
     # Predicting and evaluating
     y_pred = model.predict(X_test)
@@ -174,6 +331,7 @@ def new_train(df):
 # Example usage
 if __name__ == "__main__":
     df = pd.read_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)  # Replace with your dataset path
+    # df = pd.read_csv(config.MAIN_DATASET_PATH)  # Replace with your dataset path
     X_train, X_test, y_train, y_test = preprocess_data(df, "energy_consumption_llm", scale_features=True)
 
     # Easily switch between models by changing the model name

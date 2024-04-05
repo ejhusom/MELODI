@@ -278,14 +278,17 @@ class LLMEC():
                             print("Could not locate prompt in dataset.")
                             sys.exit(1)
 
+                        counter = 1
                         for conv in obj[conversation_label]:
                             if conv[role_label] == human_label:
                                 prompt = conv[content_label]
+                                print(f"Prompt #{counter}")
                                 df = self.run_prompt_with_energy_monitoring(
                                         prompt=prompt,
                                         save_power_data=True,
                                         plot_power_usage=False,
                                 )
+                                counter += 1
             elif dataset_path.endswith(".csv"):
                 df = pd.read_csv(dataset_path)
 
@@ -483,13 +486,13 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 if __name__ == "__main__":
 
     llm = LLMEC()
-    # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
+    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_only.csv")
-    llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v2.csv")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v2.csv")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
-    # llm.run_prompt_with_energy_monitoring(
-    #     prompt="What is the capital in France?", save_power_data=True
-    # )
+    llm.run_prompt_with_energy_monitoring(
+        prompt="What is the capital in France?", save_power_data=True
+    )
