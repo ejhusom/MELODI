@@ -256,6 +256,7 @@ class LLMEC():
         ):
 
         if dataset_path:
+            counter = 1
             if dataset_path.endswith(".json"):
                 raise ValueError("json format not yet supported.")
                 # with open(dataset_path, "rb") as f:
@@ -278,11 +279,10 @@ class LLMEC():
                             print("Could not locate prompt in dataset.")
                             sys.exit(1)
 
-                        counter = 1
                         for conv in obj[conversation_label]:
                             if conv[role_label] == human_label:
                                 prompt = conv[content_label]
-                                print(f"Prompt #{counter}")
+                                print(f"Prompt #{counter} of dataset {dataset_path}")
                                 df = self.run_prompt_with_energy_monitoring(
                                         prompt=prompt,
                                         save_power_data=True,
@@ -294,14 +294,17 @@ class LLMEC():
 
                 if task_type:
                     for prompt in df["prompt"]:
+                        print(f"Prompt #{counter} of dataset {dataset_path}")
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=prompt,
                                 save_power_data=True,
                                 plot_power_usage=False,
                                 task_type=task_type,
                         )
+                        counter += 1
                 elif "type" in df.columns:
                     for index, row in df.iterrows():
+                        print(f"Prompt #{counter} of dataset {dataset_path}")
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=row["prompt"],
                                 save_power_data=True,
@@ -309,12 +312,14 @@ class LLMEC():
                                 task_type=row["type"],
                         )
                 else:
-                    df = self.run_prompt_with_energy_monitoring(
-                            prompt=prompt,
-                            save_power_data=True,
-                            plot_power_usage=False,
-                            task_type="unknown"
-                    )
+                    for index, row in df.iterrows():
+                        print(f"Prompt #{counter} of dataset {dataset_path}")
+                        df = self.run_prompt_with_energy_monitoring(
+                                prompt=row["prompt"],
+                                save_power_data=True,
+                                plot_power_usage=False,
+                                task_type="unknown"
+                        )
             else:
                 raise ValueError("Dataset must be in csv, json or jsonl format.")
 
@@ -485,14 +490,40 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
 if __name__ == "__main__":
 
+    # filepath = sys.argv[1]
+
     llm = LLMEC()
-    llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback.jsonl")
+    # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-01.jsonl")
+    # llm.run_experiment(f"/home/erikhu/Documents/datasets/Code-Feedback-10-remainder.jsonl")
+    # llm.run_experiment(f"/home/erikhu/Documents/datasets/Code-Feedback-new-45-remainder.jsonl")
+    # llm.run_experiment(filepath)
+
+    # for i in range(100,101):
+    #     print("==================================================")
+    #     print(f"Running /home/erikhu/Documents/datasets/Code-Feedback-new-{str(i)}.jsonl")
+    #     llm.run_experiment(f"/home/erikhu/Documents/datasets/Code-Feedback-new-{str(i)}.jsonl")
+
+    # for i in range(1,101):
+    #     print("==================================================")
+    #     print(f"Running /home/erikhu/Documents/datasets/alpaca/alpaca_5000_{str(i)}.csv")
+    #     llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_5000_{str(i)}.csv")
+    for i in range(24,51):
+        print("==================================================")
+        print(f"Running /home/erikhu/Documents/datasets/alpaca/alpaca_5000_{str(i).zfill(2)}.csv")
+        llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_5000_{str(i).zfill(2)}.csv")
+
+
+
     # llm.run_experiment("/home/erikhu/Documents/datasets/Code-Feedback-error.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/test.jsonl")
     # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_only.csv")
     # llm.run_experiment("/home/erikhu/Documents/datasets/alpaca_prompts_categorized_v2.csv")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-small.jsonl")
     # llm.run_experiment("data/benchmark_datasets/sharegpt-english-very-small.jsonl")
-    llm.run_prompt_with_energy_monitoring(
-        prompt="What is the capital in France?", save_power_data=True
-    )
+
+    # n = 10
+
+    # for i in range(n):
+    #     llm.run_prompt_with_energy_monitoring(
+    #         prompt="Explain the general theory of relativity", save_power_data=True
+    #     )
