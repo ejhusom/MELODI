@@ -12,5 +12,6 @@
 ```
 sudo chmod -R a+r /sys/class/powercap/intel-rapl
 ```
-4. Define path to dataset at the bottom of `LLMEC.py`.
-5. Run `LLMEC.py`.
+4. Ensure that no other processes than your LLM service are using the GPU.
+5. Define path to dataset at the bottom of `LLMEC.py`.
+6. Run `LLMEC.py`.
