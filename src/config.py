@@ -32,10 +32,12 @@ class Config:
         self.SAVED_DATA_EXTENSION = ".csv"  # .json, .pkl.xz, .csv
         self.LLM_DATA_FILENAME = "llm_data" + self.SAVED_DATA_EXTENSION
         self.METRICS_LLM_FILENAME = "metrics_llm" + self.SAVED_DATA_EXTENSION
+        self.METRICS_LLM_GPU_FILENAME = "metrics_llm_gpu" + self.SAVED_DATA_EXTENSION
         self.METRICS_MONITORING_FILENAME = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
         self.MAIN_DATASET_PATH = self.DATA_DIR_PATH / "dataset.csv"
         self.MAIN_DATASET_WITH_FEATURES_PATH = self.DATA_DIR_PATH / "dataset_with_features.csv"
-        self.METRICS_STREAM_TEMP_FILE = "output.json"
+        self.SCAPHANDRE_STREAM_TEMP_FILE = "tmp_scaphandre.json"
+        self.NVIDIASMI_STREAM_TEMP_FILE = "tmp_nvidiasmi.csv"
 
         self._init_paths()
 
