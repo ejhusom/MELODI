@@ -17,21 +17,20 @@ import subprocess
 import sys
 import time
 
-import pytz
-import tzlocal
-
-from _csv import Error as CSVErr
-
 import ijson
 import matplotlib.pyplot as plt
 import pandas as pd
+import pytz
+import tzlocal
+from _csv import Error as CSVErr
+
+from config import config
+from LLMAPIClient import LLMAPIClient
 
 # from deepeval import assert_test, evaluate
 # from deepeval.metrics import AnswerRelevancyMetric
 # from deepeval.test_case import LLMTestCase
 
-from config import config
-from LLMAPIClient import LLMAPIClient
 
 class LLMEC():
 
