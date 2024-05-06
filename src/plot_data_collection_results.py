@@ -38,6 +38,10 @@ def read_data(force_concatenation=False):
                         print(f"{filename} is empty.")
 
             full_df = pd.concat(dfs)
+            # Convert the "created_at" column to datetime
+            full_df['created_at'] = pd.to_datetime(full_df['created_at'])
+            # Sort the DataFrame by the "created_at" column
+            full_df = full_df.sort_values(by='created_at')
             full_df.reset_index(inplace=True)
             full_df.to_csv(config.MAIN_DATASET_PATH)
 
