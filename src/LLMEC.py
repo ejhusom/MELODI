@@ -95,8 +95,11 @@ class LLMEC():
             llm_service=llm_service, api_url=llm_api_url, model_name=model_name, role="user"
         )
 
+        # Make input prompt(s) iterable
         if isinstance(prompt, str):
             prompts = [prompt]
+
+        failed_reading_data = False
 
         for p in prompts: 
 
@@ -104,12 +107,13 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Starting power measurements...")
 
+            # Start nvidia-smi for monitoring GPU
             nvidiasmi_process = subprocess.Popen(
                 [
                     "nvidia-smi",
                     "--query-gpu=timestamp,power.draw",
                     "--format=csv",
-                    "--loop-ms", str(config.SAMPLE_FREQUENCY_NANO_SECONDS/1e6),
+                    "--loop-ms", str(config.SAMPLE_FREQUENCY_NANO_SECONDS/1e6), # Use the same frequency as scaphandre
                     "--filename", config.NVIDIASMI_STREAM_TEMP_FILE,
                 ],
                 stdout=subprocess.PIPE,
@@ -138,9 +142,10 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Calling LLM service...")
 
-            start_time = datetime.datetime.now()
+            # Perform inference with LLM
+            start_time = datetime.datetime.now(tz=pytz.utc)
             data = llm_client.call_api(prompt=p, stream=stream)
-            end_time = datetime.datetime.now()
+            end_time = datetime.datetime.now(tz=pytz.utc)
 
             if not data:
                 print("Failed to get a response.")
@@ -164,6 +169,7 @@ class LLMEC():
             if metrics == []:
                 print("Found no metrics to parse.")
                 continue
+
             metrics_per_process = self._parse_metrics(metrics)
 
             # Convert from microwatts to Watts
@@ -187,7 +193,12 @@ class LLMEC():
                     else:
                         print(f"Error reading data after {num_attempts} attempts. Giving up.")
                         nvidiasmi_data = None  # Set the data to None if all attempts fail
-                        return 0
+                        # Continue with next prompt
+                        failed_reading_data = True
+                        break
+
+            if failed_reading_data:
+                continue
 
             # Rename columns
             nvidiasmi_data = nvidiasmi_data.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
@@ -237,17 +248,21 @@ class LLMEC():
                 plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
 
-            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
+            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time)
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
                 # print(f"Energy consumption for cmdline "{cmdline[:10]}...": {energy_consumption} kWh")
+                if "gpu" in cmdline:
+                    data["energy_consumption_llm_gpu"] = energy_consumption
                 if config.LLM_SERVICE_KEYWORD in cmdline:
-                    data["energy_consumption_llm"] = energy_consumption
+                    data["energy_consumption_llm_cpu"] = energy_consumption
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_monitoring"] = energy_consumption
 
             data["type"] = task_type
-            data["duration"] = end_time - start_time
+            data["clock_duration"] = end_time - start_time
+            data["start_time"] = start_time
+            data["end_time"] = end_time
 
             data_df = pd.DataFrame.from_dict([data])
 
@@ -519,14 +534,19 @@ def split_dataframe_by_column(df, column_name):
 
     return df_dict
 
-def calculate_energy_consumption_from_power_measurements(df_dict):
+def calculate_energy_consumption_from_power_measurements(df_dict, start_time, end_time):
     """
     Calculates the energy consumption in kWh for each DataFrame in the dictionary,
     given the power measurements in microwatts and using the timestamps to calculate
     the duration of each process.
+
+    The function takes actual start and end time as input, since the recorded
+    data may have buffer time periods at the beginning and end of recording.
     
     Parameters:
     - df_dict: Dictionary of DataFrames, split by unique cmdline values.
+    - start_time: Actual start time of inference.
+    - end_time: Actual end time of inference.
     
     Returns:
     - A dictionary with the same keys as df_dict, but the values are the total energy
@@ -540,16 +560,19 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
             # Convert timestamps to datetime objects
             df["datetime"] = pd.to_datetime(df.index, unit="s", utc=True)
 
+            # Filter rows based on start_time and end_time
+            df = df[(df["datetime"] >= start_time) & (df["datetime"] <= end_time)]
+
             # Calculate the duration in hours
             duration_hours = (df["datetime"].max() - df["datetime"].min()).total_seconds() / 3600.0
 
             # Handle the case where duration might be zero to avoid division by zero error
             if duration_hours > 0:
                 # Calculate total power consumption in microwatts
-                average_power_microwatts = df["consumption"].sum() / len(df)
+                average_power_watts = df["consumption"].sum() / len(df)
 
                 # Convert total power consumption to kWh
-                energy_consumption_kwh = (average_power_microwatts * duration_hours) / 10**9
+                energy_consumption_kwh = (average_power_watts * duration_hours) / 10**9
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
@@ -558,7 +581,6 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
 
-    print(energy_consumption_dict["ollamaserve"])
     return energy_consumption_dict
 
 
@@ -572,7 +594,7 @@ if __name__ == "__main__":
 
     for i in range(n):
         llm.run_prompt_with_energy_monitoring(
-            # prompt="What is the capital of the Marshall Islands?", save_power_data=True,
-            prompt="Explain the general theory of relativity", save_power_data=True,
+            prompt="What is the capital of the Marshall Islands?", save_power_data=True,
+            # prompt="Explain the general theory of relativity", save_power_data=True,
             plot_power_usage=True,
         )
