@@ -534,7 +534,10 @@ def split_dataframe_by_column(df, column_name):
 
     return df_dict
 
-def calculate_energy_consumption_from_power_measurements(df_dict, start_time, end_time):
+def calculate_energy_consumption_from_power_measurements(df_dict, start_time,
+                                                         end_time,
+                                                         buffer_before=0.5,
+                                                         buffer_after=0.5):
     """
     Calculates the energy consumption in kWh for each DataFrame in the dictionary,
     given the power measurements in microwatts and using the timestamps to calculate
@@ -555,13 +558,24 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time, en
     """
     energy_consumption_dict = {}
 
+    old_dfs = []
+    new_dfs = []
+
     for cmdline, df in df_dict.items():
         if not df.empty:
             # Convert timestamps to datetime objects
             df["datetime"] = pd.to_datetime(df.index, unit="s", utc=True)
 
-            # Filter rows based on start_time and end_time
-            df = df[(df["datetime"] >= start_time) & (df["datetime"] <= end_time)]
+            old_dfs.append(df.copy())
+
+            # Apply buffer times before and after start_time and end_time
+            start_time_with_buffer = start_time - pd.Timedelta(seconds=buffer_before)
+            end_time_with_buffer = end_time + pd.Timedelta(seconds=buffer_after)
+
+            # Filter rows based on start_time and end_time with buffer
+            df = df[(df["datetime"] >= start_time_with_buffer) & (df["datetime"] <= end_time_with_buffer)]
+
+            new_dfs.append(df.copy())
 
             # Calculate the duration in hours
             duration_hours = (df["datetime"].max() - df["datetime"].min()).total_seconds() / 3600.0
@@ -572,7 +586,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time, en
                 average_power_watts = df["consumption"].sum() / len(df)
 
                 # Convert total power consumption to kWh
-                energy_consumption_kwh = (average_power_watts * duration_hours) / 10**9
+                energy_consumption_kwh = (average_power_watts * duration_hours) / 10**3
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
@@ -581,8 +595,78 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time, en
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
 
+            #====================================================
+            # Calculate the time interval between each data point
+            time_intervals = df["datetime"].diff().dt.total_seconds()
+
+            # Calculate the energy consumption by integrating the power values over time
+            energy_consumption_kwh2 = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert microwatts to kWh
+
+            print("###########################################")
+                  print(energy_consumption_kwh)
+                  print(energy_consumption_kwh2)
+            print("###########################################")
+
+
+
+    plot_metrics_truncated(old_dfs, new_dfs)
+
     return energy_consumption_dict
 
+def plot_metrics_truncated(old_dfs, new_dfs):
+    """Plot metrics for a single prompt-response."""
+
+    old_metrics_llm = old_dfs[0]
+    old_metrics_monitoring = old_dfs[1]
+    old_metrics_gpu = old_dfs[2]
+    metrics_llm = new_dfs[0]
+    metrics_monitoring = new_dfs[1]
+    metrics_gpu = new_dfs[2]
+
+    plt.figure()
+    plt.plot(
+            old_metrics_monitoring.index,
+            old_metrics_monitoring["consumption"],
+            ".-",
+            linewidth=5, alpha=0.5,
+            label="Monitoring service",
+    )
+    plt.plot(
+            old_metrics_llm.index,
+            old_metrics_llm["consumption"],
+            ".-",
+            linewidth=5, alpha=0.5,
+            label="LLM service (CPU)",
+    )
+    plt.plot(
+            old_metrics_gpu.index,
+            old_metrics_gpu["consumption"],
+            ".-",
+            linewidth=5, alpha=0.5,
+            label="LLM service (GPU)",
+    )
+    plt.plot(
+            metrics_monitoring.index,
+            metrics_monitoring["consumption"],
+            ".-",
+            label="Monitoring service",
+    )
+    plt.plot(
+            metrics_llm.index,
+            metrics_llm["consumption"],
+            ".-",
+            label="LLM service (CPU)",
+    )
+    plt.plot(
+            metrics_gpu.index,
+            metrics_gpu["consumption"],
+            ".-",
+            label="LLM service (GPU)",
+    )
+    plt.xlabel("Timestamps")
+    plt.ylabel("Power consumption (W)")
+    plt.legend()
+    plt.show()
 
 if __name__ == "__main__":
 
