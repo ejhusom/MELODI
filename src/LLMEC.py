@@ -17,6 +17,9 @@ import subprocess
 import sys
 import time
 
+import pytz
+import tzlocal
+
 from _csv import Error as CSVErr
 
 import ijson
@@ -102,15 +105,29 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Starting power measurements...")
 
-            metrics_process = subprocess.Popen(
+            nvidiasmi_process = subprocess.Popen(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=timestamp,power.draw",
+                    "--format=csv",
+                    "--loop-ms", str(config.SAMPLE_FREQUENCY_NANO_SECONDS/1e6),
+                    "--filename", config.NVIDIASMI_STREAM_TEMP_FILE,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            scaphandre_process = subprocess.Popen(
                 [
                     "scaphandre",
                     "json",
+                    "--timeout", "10000000000",
                     "--step", "0",
                     "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
                     "--resources",
                     "--process-regex", "ollama",
-                    "--file", config.METRICS_STREAM_TEMP_FILE,
+                    "--file", config.SCAPHANDRE_STREAM_TEMP_FILE,
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -121,6 +138,7 @@ class LLMEC():
             # Prompt LLM
             if self.verbosity > 0:
                 print("Calling LLM service...")
+
             start_time = datetime.datetime.now()
             data = llm_client.call_api(prompt=p, stream=stream)
             end_time = datetime.datetime.now()
@@ -134,12 +152,13 @@ class LLMEC():
 
             # Collect power measurements
             time.sleep(config.MONITORING_END_DELAY)
-            metrics_process.terminate()
+            scaphandre_process.terminate()
+            nvidiasmi_process.terminate()
 
             if self.verbosity > 0:
                 print("Power measurements stopped.")
 
-            with open( config.METRICS_STREAM_TEMP_FILE, "r") as f:
+            with open(config.SCAPHANDRE_STREAM_TEMP_FILE, "r") as f:
                 metrics_stream = f.read()
 
             metrics = parse_json_objects(metrics_stream)
@@ -148,20 +167,65 @@ class LLMEC():
                 continue
             metrics_per_process = self._parse_metrics(metrics)
 
-            # print("==============================")
-            # a = datetime.datetime.fromtimestamp(
-            #         metrics_per_process["ollamaserve"]["timestamp"].iloc[0]
-            # )
-            # b = datetime.datetime.fromtimestamp(
-            #         metrics_per_process["ollamaserve"]["timestamp"].iloc[-1]
-            # )
-            # print("Start time: ", start_time)
-            # print("End time: ", start_time)
-            # print("Duration: ", end_time - start_time)
-            # print("scaph Start time: ", a)
-            # print("scaph End time: ", b)
-            # print("scaph Duration: ", b - a)
-            # print("==============================")
+            # Convert from microwatts to Watts
+            for process in metrics_per_process:
+                metrics_per_process[process]["consumption"] /= 1e6
+
+            # Load GPU power draw measured by nvidia-smi:
+            # Sometimes the writing of the GPU power data has not finished, so allow for some time if reading the data gives an errror.
+            num_attempts = 5
+            timeout = 3
+
+            # Try reading the data for num_attempts times
+            for i in range(num_attempts):
+                try:
+                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE)
+                    break  # Exit the loop if the read is successful
+                except pd.errors.EmptyDataError:
+                    if i < num_attempts - 1:
+                        print(f"Error reading data. Waiting {timeout} second and trying again ({i+1}/{num_attempts})")
+                        time.sleep(timeout)
+                    else:
+                        print(f"Error reading data after {num_attempts} attempts. Giving up.")
+                        nvidiasmi_data = None  # Set the data to None if all attempts fail
+                        return 0
+
+            # Rename columns
+            nvidiasmi_data = nvidiasmi_data.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
+            # Drop nan columns
+            nvidiasmi_data = nvidiasmi_data.dropna(subset=["consumption"])
+            # Convert the timestamps to UTC
+            nvidiasmi_data['datetime'] = pd.to_datetime(nvidiasmi_data['datetime'])
+            # Detect the local time zone and convert the nvidia-smi timestamps to UTC
+            local_tz = pytz.timezone(tzlocal.get_localzone_name())
+            nvidiasmi_data['datetime'] = nvidiasmi_data['datetime'].dt.tz_localize(local_tz).dt.tz_convert('UTC')
+
+            # Create column with unix timestamp
+            nvidiasmi_data["timestamp"] = pd.to_datetime(nvidiasmi_data["datetime"]).astype(int) / 10**9
+            # Convert measurements from string with unit to a float number
+            nvidiasmi_data["consumption"] = nvidiasmi_data["consumption"].str.replace(' W', '').astype(float)
+            # Save GPU power draw together with the other measurements
+            metrics_per_process["llm_gpu"] = nvidiasmi_data
+
+            print("==============================")
+            a = datetime.datetime.fromtimestamp(
+                    metrics_per_process["ollamaserve"]["timestamp"].iloc[0]
+            )
+            b = datetime.datetime.fromtimestamp(
+                    metrics_per_process["ollamaserve"]["timestamp"].iloc[-1]
+            )
+            c = nvidiasmi_data["datetime"].iloc[0]
+            d = nvidiasmi_data["datetime"].iloc[-1]
+            print("Start time: ", start_time)
+            print("End time: ", end_time)
+            print("Duration: ", end_time - start_time)
+            print("scaph Start time: ", a)
+            print("scaph End time: ", b)
+            print("scaph Duration: ", b - a)
+            print("nvidia Start time: ", c)
+            print("nvidia End time: ", d)
+            print("nvidia Duration: ", d - c)
+            print("==============================")
 
             for cmdline, specific_process in metrics_per_process.items():
                 specific_process.set_index("timestamp", inplace=True)
@@ -171,7 +235,8 @@ class LLMEC():
                     metrics_monitoring = specific_process
 
             if plot_power_usage:
-                plot_metrics(metrics_llm, metrics_monitoring)
+                plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
+
 
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process)
 
@@ -183,6 +248,7 @@ class LLMEC():
                     data["energy_consumption_monitoring"] = energy_consumption
 
             data["type"] = task_type
+            data["duration"] = end_time - start_time
 
             data_df = pd.DataFrame.from_dict([data])
 
@@ -194,12 +260,16 @@ class LLMEC():
                 llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.LLM_DATA_FILENAME}"
                 metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_FILENAME}"
                 metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME}"
+                metrics_llm_gpu_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_GPU_FILENAME}"
 
                 with open(llm_data_filename, "w") as f:
                     self._save_data(data_df, llm_data_filename)
 
                 with open(metrics_llm_filename, "w") as f:
                     self._save_data(metrics_llm, metrics_llm_filename)
+
+                with open(metrics_llm_gpu_filename, "w") as f:
+                    self._save_data(nvidiasmi_data, metrics_llm_gpu_filename)
 
                 with open(metrics_monitoring_filename, "w") as f:
                     self._save_data(metrics_monitoring, metrics_monitoring_filename)
@@ -330,26 +400,30 @@ class LLMEC():
         else:
             raise ValueError("No dataset or prompts given. Cannot run experiment.")
                 
-def plot_metrics(metrics_llm, metrics_monitoring):
+def plot_metrics(metrics_llm, metrics_monitoring, metrics_gpu):
     """Plot metrics for a single prompt-response."""
 
     plt.figure()
-    # plt.plot(
-    #         metrics_monitoring.index,
-    #         metrics_monitoring["consumption"],
-    #         ".-",
-    #         label="Monitoring service",
-    # )
+    plt.plot(
+            metrics_monitoring.index,
+            metrics_monitoring["consumption"],
+            ".-",
+            label="Monitoring service",
+    )
     plt.plot(
             metrics_llm.index,
             metrics_llm["consumption"],
             ".-",
-            label="LLM service",
+            label="LLM service (CPU)",
     )
-    # metrics_monitoring["consumption"].plot(color="red")
-    # metrics_llm["consumption"].plot()
+    plt.plot(
+            metrics_gpu.index,
+            metrics_gpu["consumption"],
+            ".-",
+            label="LLM service (GPU)",
+    )
     plt.xlabel("Timestamps")
-    plt.ylabel("Power consumption (microwatts)")
+    plt.ylabel("Power consumption (W)")
     plt.legend()
     plt.show()
 
@@ -465,7 +539,8 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
     for cmdline, df in df_dict.items():
         if not df.empty:
             # Convert timestamps to datetime objects
-            df["datetime"] = pd.to_datetime(df.index, unit="s")
+            df["datetime"] = pd.to_datetime(df.index, unit="s", utc=True)
+
             # Calculate the duration in hours
             duration_hours = (df["datetime"].max() - df["datetime"].min()).total_seconds() / 3600.0
 
@@ -490,7 +565,15 @@ def calculate_energy_consumption_from_power_measurements(df_dict):
 
 if __name__ == "__main__":
 
-    filepath = sys.argv[1]
+    # filepath = sys.argv[1]
     llm = LLMEC()
-    llm.run_experiment(filepath)
+    # llm.run_experiment(filepath)
 
+    n = 10
+
+    for i in range(n):
+        llm.run_prompt_with_energy_monitoring(
+            # prompt="What is the capital of the Marshall Islands?", save_power_data=True,
+            prompt="Explain the general theory of relativity", save_power_data=True,
+            plot_power_usage=True,
+        )
