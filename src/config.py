@@ -21,6 +21,8 @@ class Config:
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 3.0
         self.MONITORING_END_DELAY = 2.0
+        self.MEASUREMENTS_START_BUFFER = 0.5
+        self.MEASUREMENTS_END_BUFFER = 0.5
         self.OPENAI_API_COMPATIBLE_SERVICES = [
                 "llamafile",
                 "llama.cpp",

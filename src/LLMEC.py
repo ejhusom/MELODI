@@ -19,6 +19,7 @@ import time
 
 import ijson
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytz
 import tzlocal
@@ -184,7 +185,8 @@ class LLMEC():
             # Try reading the data for num_attempts times
             for i in range(num_attempts):
                 try:
-                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE)
+                    # Read nvidia-smi data, and skipping last row, since it sometimes is incomplete.
+                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE)[:-1]
                     break  # Exit the loop if the read is successful
                 except pd.errors.EmptyDataError:
                     if i < num_attempts - 1:
@@ -200,20 +202,8 @@ class LLMEC():
             if failed_reading_data:
                 continue
 
-            # Rename columns
-            nvidiasmi_data = nvidiasmi_data.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
-            # Drop nan columns
-            nvidiasmi_data = nvidiasmi_data.dropna(subset=["consumption"])
-            # Convert the timestamps to UTC
-            nvidiasmi_data['datetime'] = pd.to_datetime(nvidiasmi_data['datetime'])
-            # Detect the local time zone and convert the nvidia-smi timestamps to UTC
-            local_tz = pytz.timezone(tzlocal.get_localzone_name())
-            nvidiasmi_data['datetime'] = nvidiasmi_data['datetime'].dt.tz_localize(local_tz).dt.tz_convert('UTC')
+            nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
 
-            # Create column with unix timestamp
-            nvidiasmi_data["timestamp"] = pd.to_datetime(nvidiasmi_data["datetime"]).astype(int) / 10**9
-            # Convert measurements from string with unit to a float number
-            nvidiasmi_data["consumption"] = nvidiasmi_data["consumption"].str.replace(' W', '').astype(float)
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
 
@@ -266,6 +256,11 @@ class LLMEC():
 
             data_df = pd.DataFrame.from_dict([data])
 
+            data_df["energy_consumption_llm_total"] = (
+                    data_df["energy_consumption_llm_cpu"] +
+                    data_df["energy_consumption_llm_gpu"]
+            )
+
             if save_power_data:
                 if self.verbosity > 0:
                     print("Saving data...")
@@ -292,6 +287,30 @@ class LLMEC():
                     print(f"Data saved with timestamp {timestamp_filename}")
 
         return data_df
+
+    def postprocess_nvidiasmi_data(self, df):
+
+        # Rename columns
+        df = df.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
+        # Drop nan rows
+        df = df.dropna()
+        # Convert the timestamps to UTC
+        df['datetime'] = pd.to_datetime(df['datetime'])
+        # Sort values
+        df = df.sort_values('datetime')
+        # Detect the local time zone and convert the nvidia-smi timestamps to UTC
+        local_tz = pytz.timezone(tzlocal.get_localzone_name())
+        df['datetime'] = df['datetime'].dt.tz_localize(local_tz).dt.tz_convert('UTC')
+        # Create column with unix timestamp
+        df["timestamp"] = pd.to_datetime(df["datetime"]).astype(int) / 10**9
+        # Convert measurements from string with unit to a float number
+        df["consumption"] = df["consumption"].str.replace(' W', '').astype(float)
+        # Drop rows with negative timestamps (in the index)
+        df = df[df.index >= 0]
+        # # Drop rows where timestamps does not appear chronologically
+        # df = df[df['timestamp'].diff().ge(0)]
+
+        return df
 
     def _save_data(self, data, filename):
 
@@ -395,6 +414,7 @@ class LLMEC():
                                 plot_power_usage=False,
                                 task_type=row["type"],
                         )
+                        counter += 1
                 else:
                     for index, row in df.iterrows():
                         print(f"Prompt #{counter} of dataset {dataset_path}")
@@ -404,6 +424,7 @@ class LLMEC():
                                 plot_power_usage=False,
                                 task_type="unknown"
                         )
+                        counter += 1
             else:
                 raise ValueError("Dataset must be in csv, json or jsonl format.")
 
@@ -534,10 +555,14 @@ def split_dataframe_by_column(df, column_name):
 
     return df_dict
 
-def calculate_energy_consumption_from_power_measurements(df_dict, start_time,
-                                                         end_time,
-                                                         buffer_before=0.5,
-                                                         buffer_after=0.5):
+def calculate_energy_consumption_from_power_measurements(
+        df_dict, 
+        start_time,
+        end_time,
+        buffer_before=config.MEASUREMENTS_START_BUFFER,
+        buffer_after=config.MEASUREMENTS_END_BUFFER,
+        show_plot=False
+    ):
     """
     Calculates the energy consumption in kWh for each DataFrame in the dictionary,
     given the power measurements in microwatts and using the timestamps to calculate
@@ -565,6 +590,7 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time,
         if not df.empty:
             # Convert timestamps to datetime objects
             df["datetime"] = pd.to_datetime(df.index, unit="s", utc=True)
+            # df['timestamp_seconds'] = df['datetime'].dt.total_seconds()
 
             old_dfs.append(df.copy())
 
@@ -577,16 +603,27 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time,
 
             new_dfs.append(df.copy())
 
-            # Calculate the duration in hours
-            duration_hours = (df["datetime"].max() - df["datetime"].min()).total_seconds() / 3600.0
+            # Calculate the duration
+            duration = (df["datetime"].max() - df["datetime"].min()).total_seconds()
 
             # Handle the case where duration might be zero to avoid division by zero error
-            if duration_hours > 0:
-                # Calculate total power consumption in microwatts
-                average_power_watts = df["consumption"].sum() / len(df)
+            if duration > 0:
+                # # Calculate total power consumption in microwatts
+                # average_power_watts = df["consumption"].sum() / len(df)
 
-                # Convert total power consumption to kWh
-                energy_consumption_kwh = (average_power_watts * duration_hours) / 10**3
+                # # Convert total power consumption to kWh
+                # energy_consumption_kwh = (average_power_watts * duration) / (3600 * 10**3)
+
+                #====================================================
+                # Calculate the time interval between each data point
+                time_intervals = df["datetime"].diff().dt.total_seconds()
+                # Calculate the energy consumption by integrating the power values over time
+                energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
+                print(f"kWh (time intervals): {energy_consumption_kwh}")
+
+                energy_consumption_joules = np.trapz(df["consumption"], df.index)
+                energy_consumption_kwh = energy_consumption_joules / (10**3 * 3600)
+                print(f"kWh (trapz)         : {energy_consumption_kwh}")
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
@@ -595,21 +632,9 @@ def calculate_energy_consumption_from_power_measurements(df_dict, start_time,
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
 
-            #====================================================
-            # Calculate the time interval between each data point
-            time_intervals = df["datetime"].diff().dt.total_seconds()
 
-            # Calculate the energy consumption by integrating the power values over time
-            energy_consumption_kwh2 = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert microwatts to kWh
-
-            print("###########################################")
-                  print(energy_consumption_kwh)
-                  print(energy_consumption_kwh2)
-            print("###########################################")
-
-
-
-    plot_metrics_truncated(old_dfs, new_dfs)
+    if show_plot:
+        plot_metrics_truncated(old_dfs, new_dfs)
 
     return energy_consumption_dict
 
@@ -627,21 +652,18 @@ def plot_metrics_truncated(old_dfs, new_dfs):
     plt.plot(
             old_metrics_monitoring.index,
             old_metrics_monitoring["consumption"],
-            ".-",
             linewidth=5, alpha=0.5,
             label="Monitoring service",
     )
     plt.plot(
             old_metrics_llm.index,
             old_metrics_llm["consumption"],
-            ".-",
             linewidth=5, alpha=0.5,
             label="LLM service (CPU)",
     )
     plt.plot(
             old_metrics_gpu.index,
             old_metrics_gpu["consumption"],
-            ".-",
             linewidth=5, alpha=0.5,
             label="LLM service (GPU)",
     )
@@ -682,3 +704,10 @@ if __name__ == "__main__":
             # prompt="Explain the general theory of relativity", save_power_data=True,
             plot_power_usage=True,
         )
+
+    # for i in range(1,26):
+    #     print("==================================================")
+    #     print(f"Running /home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
+    #     llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
+
+

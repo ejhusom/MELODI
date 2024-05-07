@@ -143,29 +143,31 @@ def plot_single_correlations(df):
     df.dropna(subset=['type', 'energy_consumption_llm'], inplace=True)
 
 
-    # Perform ANOVA
-    anova_results = ols('energy_consumption_llm ~ C(type)', data=df).fit()
-    anova_table = sm.stats.anova_lm(anova_results, typ=2)
-    print(anova_table)
+    # # Perform ANOVA
+    # anova_results = ols('energy_consumption_llm ~ C(type)', data=df).fit()
+    # anova_table = sm.stats.anova_lm(anova_results, typ=2)
+    # print(anova_table)
 
-    # If the p-value from ANOVA is significant, proceed with Tukey's HSD
-    if anova_table['PR(>F)'][0] < 0.05:
-        print("Significant differences found, proceeding with Tukey's HSD")
-        tukey = pairwise_tukeyhsd(endog=df['energy_consumption_llm'], groups=df['type'], alpha=0.05)
-        print(tukey)
-    else:
-        print("No significant differences found among categories.")
+    # # If the p-value from ANOVA is significant, proceed with Tukey's HSD
+    # if anova_table['PR(>F)'][0] < 0.05:
+    #     print("Significant differences found, proceeding with Tukey's HSD")
+    #     tukey = pairwise_tukeyhsd(endog=df['energy_consumption_llm'], groups=df['type'], alpha=0.05)
+    #     print(tukey)
+    # else:
+    #     print("No significant differences found among categories.")
 
 
 if __name__ == "__main__":
     print("Reading data...")
     df = read_data(force_concatenation=True)
+    df["energy_consumption_llm"] = df["energy_consumption_llm_cpu"] + df["energy_consumption_llm_gpu"]
+    df.to_csv(config.MAIN_DATASET_PATH)
     print(df.info())
-    # # plot_data(df)
-    # print("Extracting features...")
-    # df_with_features = extract_features(df)
-    # print("Plotting correlations...")
-    # plot_single_correlations(df)
-    # print("Saving data with extracted features...")
-    # df_with_features.to_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)
-    # print("Done!")
+    plot_data(df)
+    print("Extracting features...")
+    df_with_features = extract_features(df)
+    print("Plotting correlations...")
+    plot_single_correlations(df)
+    print("Saving data with extracted features...")
+    df_with_features.to_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)
+    print("Done!")
