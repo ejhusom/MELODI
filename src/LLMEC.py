@@ -636,6 +636,8 @@ def calculate_energy_consumption_from_power_measurements(
     if show_plot:
         plot_metrics_truncated(old_dfs, new_dfs)
 
+    plot_metrics_truncated(old_dfs, new_dfs)
+
     return energy_consumption_dict
 
 def plot_metrics_truncated(old_dfs, new_dfs):
