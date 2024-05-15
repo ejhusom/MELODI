@@ -234,11 +234,10 @@ class LLMEC():
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     metrics_monitoring = specific_process
 
-            if plot_power_usage:
-                plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
+            # if plot_power_usage:
+            #     plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
-
-            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time)
+            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
                 # print(f"Energy consumption for cmdline "{cmdline[:10]}...": {energy_consumption} kWh")
@@ -635,8 +634,6 @@ def calculate_energy_consumption_from_power_measurements(
 
     if show_plot:
         plot_metrics_truncated(old_dfs, new_dfs)
-
-    plot_metrics_truncated(old_dfs, new_dfs)
 
     return energy_consumption_dict
 
