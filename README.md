@@ -15,3 +15,19 @@ sudo chmod -R a+r /sys/class/powercap/intel-rapl
 4. Ensure that no other processes than your LLM service are using the GPU.
 5. Define path to dataset at the bottom of `LLMEC.py`.
 6. Run `LLMEC.py`.
+
+
+
+## How to move display to integrated graphics
+
+- ```sudo nano /etc/X11/xorg.conf```
+- Paste:
+
+```bash
+Section "Device"
+    Identifier "intelgpu0"
+    Driver "intel"  # Use the Intel driver
+EndSection
+```
+
+- Restart display: `sudo systemctl restart display-manager`
