@@ -202,7 +202,11 @@ class LLMEC():
             if failed_reading_data:
                 continue
 
-            nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            try:
+                nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            except:
+                continue
+
 
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
@@ -293,7 +297,6 @@ class LLMEC():
         df = df.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
         # Drop nan rows
         df = df.dropna()
-        # Convert the timestamps to UTC
         df['datetime'] = pd.to_datetime(df['datetime'])
         # Sort values
         df = df.sort_values('datetime')
@@ -615,10 +618,10 @@ def calculate_energy_consumption_from_power_measurements(
 
                 #====================================================
                 # Calculate the time interval between each data point
-                time_intervals = df["datetime"].diff().dt.total_seconds()
+                # time_intervals = df["datetime"].diff().dt.total_seconds()
                 # Calculate the energy consumption by integrating the power values over time
-                energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
-                print(f"kWh (time intervals): {energy_consumption_kwh}")
+                # energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
+                # print(f"kWh (time intervals): {energy_consumption_kwh}")
 
                 energy_consumption_joules = np.trapz(df["consumption"], df.index)
                 energy_consumption_kwh = energy_consumption_joules / (10**3 * 3600)
@@ -691,22 +694,20 @@ def plot_metrics_truncated(old_dfs, new_dfs):
 
 if __name__ == "__main__":
 
-    # filepath = sys.argv[1]
+    filepath = sys.argv[1]
     llm = LLMEC()
-    # llm.run_experiment(filepath)
+    llm.run_experiment(filepath)
 
-    n = 10
+    # n = 10
 
-    for i in range(n):
-        llm.run_prompt_with_energy_monitoring(
-            prompt="What is the capital of the Marshall Islands?", save_power_data=True,
-            # prompt="Explain the general theory of relativity", save_power_data=True,
-            plot_power_usage=True,
-        )
+    # for i in range(n):
+    #     llm.run_prompt_with_energy_monitoring(
+    #         prompt="What is the capital of the Marshall Islands?", save_power_data=True,
+    #         # prompt="Explain the general theory of relativity", save_power_data=True,
+    #         plot_power_usage=True,
+    #     )
 
     # for i in range(1,26):
     #     print("==================================================")
     #     print(f"Running /home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
-    #     llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
-
-
+         # llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
