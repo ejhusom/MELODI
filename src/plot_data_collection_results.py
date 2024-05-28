@@ -11,6 +11,7 @@ Created:
 """
 import os
 import subprocess
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -158,12 +159,19 @@ def plot_single_correlations(df):
 
 
 if __name__ == "__main__":
+
+    # Read data folder from command line argument. If not provided, the folder named "data" will be used as default.
+    try:
+        data_folder = sys.argv[1]
+    except:
+        data_folder = None
+
     print("Reading data...")
     df = read_data(force_concatenation=True)
     df["energy_consumption_llm"] = df["energy_consumption_llm_cpu"] + df["energy_consumption_llm_gpu"]
     df.to_csv(config.MAIN_DATASET_PATH)
     print(df.info())
-    plot_data(df)
+    # plot_data(df)
     print("Extracting features...")
     df_with_features = extract_features(df)
     print("Plotting correlations...")
