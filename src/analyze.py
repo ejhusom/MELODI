@@ -153,50 +153,83 @@ class Dataset():
         plt.tight_layout()
         plt.show()
 
+    # @staticmethod
+    # def compare_datasets(datasets):
+    #     # FIXME: Plotting does not work yet
+
+    #     stats = [
+    #             "mean",
+    #             "median",
+    #             "std_dev",
+    #             "min",
+    #             "max",
+    #             "range",
+    #             "outliers",
+    #     ]
+
+    #     # # Define the data for the grouped bar chart
+    #     # groups = ['alpaca_gemma_2b', 'alpaca_gemma_7b', 'alpaca_llama_8b']
+    #     # numeric_columns = ['total_duration', 'load_duration', 'prompt_token_length', 'prompt_duration']
+    #     # values = [[self.df[col].mean() for col in numeric_columns] for _ in groups]
+
+    #     values = [[dataset.statistics[stat] for dataset in datasets] for stat in stats]
+    #     dataset_names = [dataset.name for dataset in datasets]
+
+
+    #     # Set the position of each group on the X-axis
+    #     x = np.arange(len(datasets))
+
+    #     # Set the width of the bars
+    #     width = 0.2
+
+    #     # Plot the grouped bar chart
+    #     fig, ax = plt.subplots(figsize=(10, 6))
+    #     for i, stat in enumerate(stats):
+    #         ax.bar(x + i * width, values[i], width, label=stat)
+
+    #     # Add labels, title, and legend
+    #     ax.set_xlabel('Datasets')
+    #     ax.set_ylabel('Mean Value')
+    #     ax.set_title('Comparison of Datasets')
+    #     ax.set_xticks(x + width * len(numeric_columns) / 2)
+    #     ax.set_xticklabels(dataset_names)
+    #     ax.legend(loc='upper right')
+
+    #     plt.tight_layout()
+    #     plt.show()
+
     @staticmethod
     def compare_datasets(datasets):
-        # FIXME: Plotting does not work yet
+        stats = ["mean", "median", "std_dev", "min", "max", "range", "outliers"]
 
-        stats = [
-                "mean",
-                "median",
-                "std_dev",
-                "min",
-                "max",
-                "range",
-                "outliers",
-        ]
+        # Gather statistics for each dataset
+        values = [[dataset.statistics[stat].mean() for stat in stats] for dataset in datasets]
+        values = np.array(values).T  # Transpose the array to match the shape
 
-        # # Define the data for the grouped bar chart
-        # groups = ['alpaca_gemma_2b', 'alpaca_gemma_7b', 'alpaca_llama_8b']
-        # numeric_columns = ['total_duration', 'load_duration', 'prompt_token_length', 'prompt_duration']
-        # values = [[self.df[col].mean() for col in numeric_columns] for _ in groups]
-
-        values = [[dataset.statistics[stat] for dataset in datasets] for stat in stats]
         dataset_names = [dataset.name for dataset in datasets]
 
-
         # Set the position of each group on the X-axis
-        x = np.arange(len(datasets))
+        x = np.arange(len(stats))
 
         # Set the width of the bars
         width = 0.2
 
         # Plot the grouped bar chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for i, stat in enumerate(stats):
-            ax.bar(x + i * width, values[i], width, label=stat)
+        fig, ax = plt.subplots(figsize=(12, 8))
+        for i, dataset_name in enumerate(dataset_names):
+            ax.bar(x + i * width, values[:, i], width, label=dataset_name)
 
         # Add labels, title, and legend
-        ax.set_xlabel('Datasets')
-        ax.set_ylabel('Mean Value')
+        ax.set_xlabel('Statistics')
+        ax.set_ylabel('Value')
         ax.set_title('Comparison of Datasets')
-        ax.set_xticks(x + width * len(numeric_columns) / 2)
-        ax.set_xticklabels(dataset_names)
+        ax.set_xticks(x + width * (len(dataset_names) - 1) / 2)
+        ax.set_xticklabels(stats)
         ax.legend(loc='upper right')
 
         plt.tight_layout()
         plt.show()
+
 
 if __name__ == '__main__':
 
