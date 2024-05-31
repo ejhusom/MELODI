@@ -70,6 +70,7 @@ class Dataset():
         statistics['skewness'] = self.df[numeric_columns].skew()
         statistics['kurtosis'] = self.df[numeric_columns].kurtosis()
         statistics['std_dev'] = self.df[numeric_columns].std()
+        self.df["energy_per_token"] = self.df["energy_consumption_llm"] / self.df["response_token_length"]
 
         # Outlier detection using IQR method
         Q1 = self.df[numeric_columns].quantile(0.25)
@@ -343,7 +344,6 @@ class Dataset():
         fig, ax = plt.subplots(1, len(model_names), figsize=(5*len(model_names), 10))
 
         for i, model_name in enumerate(model_names):
-            print(model_name)
             ax[i] = fig.add_subplot(1, len(model_names), i+1)
             datasets_for_model = [dataset for dataset in datasets_dict.values() if model_name in dataset.name]
             dataset_names_for_model = [dataset.name for dataset in datasets_for_model]
@@ -353,24 +353,74 @@ class Dataset():
                 "dataset": dataset_names_for_model, 
                 "energy_per_token": avg_energy_per_token_for_model,
                 "promptset": [dataset_name.split("_")[0] for dataset_name in dataset_names_for_model],
-                "model_size_and_hardware" = ["_".join(dataset_name.split("_")[2:]) for dataset_name in dataset_names_for_model]
+                "model_size_and_hardware": ["_".join(dataset_name.split("_")[2:]) for dataset_name in dataset_names_for_model]
             })
 
-            for j, dataset_name in enumerate(dataset_names_for_model):
-                # Find promptset name
-                promptset = dataset_name.split("_")[0]
-                # Find model size
-                model_size = dataset_name.split("_")[2:]
-                # Join model size to one string
-                model_size = "_".join(model_size)
-                print("-----" + dataset_name)
-                ax[i].bar(model_size, avg_energy_per_token_for_model[j], color=promptset_colors[promptset])
+            ax[i].bar(
+                current_model_data["model_size_and_hardware"], 
+                current_model_data["energy_per_token"], 
+                color=current_model_data["promptset"].apply(lambda x: promptset_colors[x])
+            )
 
-            # ax[i].bar(dataset_names_for_model, avg_energy_per_token_for_model, color=promptset_colors[promptset])
             ax[i].set_xlabel(model_name)
             ax[i].set_ylabel('Energy consumption per token (kWh)')
             ax[i].set_xticks(ax[i].get_xticks(), rotation=45, ha='right')
 
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def boxplot_energy_per_token(datasets_dict):
+
+        datasets = list(datasets_dict.values())
+
+        # Remove datasets with over 50b in model size
+        datasets = [dataset for dataset in datasets if int(dataset.name.split("_")[2][:-1]) <= 50]
+
+        # Prepare the data for box plot
+        data = [dataset.df["energy_consumption_llm"] for dataset in datasets]
+        dataset_names = [dataset.name for dataset in datasets]
+
+        # Plot the box plot
+        fig, ax = plt.subplots(figsize=(4,5))
+        bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
+
+        # Use colors depending on which dataset it is ("alpaca" or "codefeedback")
+        # Colorblind friendly colors:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        new_dataset_names = []
+        for i, dataset_name in enumerate(dataset_names):
+            if "alpaca" in dataset_name:
+                color = colors[0]
+                color = colors[0]
+            else:
+                color = colors[1]
+            # for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+            plt.setp(bp['boxes'][i], color=color)
+            plt.setp(bp['medians'][i], color="red")
+            # Remove "alpaca" and "codefeedback" from the dataset name
+            dataset_name = dataset_name.replace("alpaca_", "").replace("codefeedback_", "")
+            new_dataset_names.append(dataset_name)
+
+        # Set the x-axis labels to the dataset names
+        ax.set_xticklabels(new_dataset_names)
+
+
+        # Use another way to visualize the difference between the different models, using color or shape. Need to show the difference between "gemma", "llama3" and "codellama"
+
+        
+        # Add legend to plot explaining which color corresponds to which dataset
+        alpaca_patch = mpl.patches.Patch(color=colors[0], label='Alpaca')
+        codefeedback_patch = mpl.patches.Patch(color=colors[1], label='CodeFeedback')
+        plt.legend(handles=[alpaca_patch, codefeedback_patch], loc='upper right')
+
+
+        # Add labels and title
+        ax.set_xlabel('Datasets')
+        ax.set_ylabel('Energy consumption (kWh)')
+        ax.set_title('Dataset comparison')
+
+        plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
 
@@ -379,6 +429,7 @@ if __name__ == '__main__':
     datasets_path = config.DATA_DIR_PATH / "main_results"
 
     datasets = {}
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
 
     # loop through all files in the directory
     for filename in os.listdir(datasets_path):
@@ -386,10 +437,21 @@ if __name__ == '__main__':
             print(filename)
             file_path = os.path.join(datasets_path, filename)  # get full file path
             dataset = Dataset(file_path, name=filename.split(".")[0])
-            datasets[filename] = dataset
+            # datasets[filename] = dataset
+            datasets[filename] = {}
+            datasets[filename]["dataset"] = dataset
+            datasets[filename]["color"] = colors.pop(0)
+            datasets[filename]["promptset"] = filename.split("_")[0]
+            # datasets[filename]["model_size"] = int(filename.split("_")[2])[:-1])
+            datasets[filename]["model_size"] = filename.split("_")[2]
+            datasets[filename]["model_name"] = filename.split("_")[1]
+            datasets[filename]["hardware"] = filename.split("_")[3]
 
+    datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
+
+    print(datasets)
 
     # Dataset.plot_boxplot(datasets)
     # Dataset.plot_boxplot_subplots(datasets, datasetname="alpaca")
     # Dataset.compare_datasets(datasets)
-    Dataset.compare_energy_per_token(datasets)
+    # Dataset.compare_energy_per_token(datasets)
