@@ -4,7 +4,6 @@ Use local Large Language Models (LLMs) while monitoring energy usage. This proje
 
 ## Table of Contents
 
-- [Project Title and Description](#llm-energy-consumption-monitoring)
 - [Table of Contents](#table-of-contents)
 - [Installation](#installation)
 - [Usage](#usage)

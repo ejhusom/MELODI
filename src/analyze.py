@@ -206,12 +206,19 @@ class Dataset():
 if __name__ == '__main__':
 
     alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma2b/dataset.csv", name="alpaca-gemma-2b")
-    # alpaca_gemma_2b.display_statistics()
-    # alpaca_gemma_2b.plot_distribution()
-    # alpaca_gemma_2b.perform_correlation_analysis()
+    alpaca_gemma_2b.display_statistics()
+    alpaca_gemma_2b.plot_distribution()
+    alpaca_gemma_2b.perform_correlation_analysis()
 
     alpaca_gemma_7b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma7b/dataset.csv", name="alpaca-gemma-7b")
+    alpaca_gemma_7b.display_statistics()
+    alpaca_gemma_7b.plot_distribution()
+    alpaca_gemma_7b.perform_correlation_analysis()
+
     alpaca_llama_8b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-llama3-8b/dataset.csv", name="alpaca-llama3-8b")
+    alpaca_llama_8b.display_statistics()
+    alpaca_llama_8b.plot_distribution()
+    alpaca_llama_8b.perform_correlation_analysis()
 
     datasets = [
             alpaca_gemma_2b,
@@ -219,7 +226,7 @@ if __name__ == '__main__':
             alpaca_llama_8b
     ]
 
-    Dataset.compare_datasets(datasets)
+    # Dataset.compare_datasets(datasets)
     Dataset.plot_boxplot(datasets)
 
-    # breakpoint()
+    #  breakpoint()
