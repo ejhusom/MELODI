@@ -189,6 +189,28 @@ class Dataset():
         plt.show()
 
     @staticmethod
+    def plot_boxplot_subplots(datasets_dict, datasetname=None):
+
+        if datasetname is not None:
+            filtered_datasets = {key: value for key, value in datasets_dict.items() if datasetname in key}
+            datasets = list(filtered_datasets.values())
+        else:
+            datasets = list(datasets_dict.values())
+
+        # Prepare the data for box plot
+        data = [dataset.df["energy_consumption_llm"] for dataset in datasets]
+        dataset_names = [dataset.name for dataset in datasets]
+        # Plot the box plot
+        fig, axes = plt.subplots(1, len(datasets), figsize=(5*len(datasets), 5))
+        for i, ax in enumerate(axes):
+            ax.boxplot(data[i], labels=[dataset_names[i]], patch_artist=True, showfliers=False, vert=1, notch=True)
+            ax.set_xlabel('Dataset')
+            ax.set_ylabel('Energy consumption (kWh)')
+            ax.set_title(dataset_names[i])
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
     def plot_boxplot(datasets_dict):
 
         # The datasets must be sorted first by model size, then by model name
@@ -301,14 +323,51 @@ class Dataset():
             f.write("\\end{table}\n")
 
     @staticmethod
-    def comparison_plot(datasets_dict):
-        """Compare datasets across several dimensions: Model type, model size, dataset, and hardware.
+    def compare_energy_per_token(datasets_dict):
+        # Calculate energy consumption per generated token in the response
+        # The datasets must be sorted first by model size, then by model name
+        datasets_dict = dict(sorted(datasets_dict.items(), key=lambda x: (int(x[1].name.split("_")[2][:-1]), x[1].name.split("_")[1])))
 
-        Args:
-            datasets_dict (dict): Dictionary containing Dataset objects as values.
+        # Colorblind friendly colors:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        # Extract promptset from dataset name
+        promptsets = set([dataset_name.split("_")[0] for dataset_name in datasets_dict.keys()])
+        # Make a dict matching promptset to color
+        promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
+        # Extract model names from dataset names
+        model_names = set([dataset_name.split("_")[1] for dataset_name in datasets_dict.keys()])
 
-        """
-        pass
+        for dataset_name, dataset in datasets_dict.items():
+            dataset.df['energy_per_token'] = dataset.df['energy_consumption_llm'] / dataset.df['response_token_length']
+
+        # avg_energy_per_token = [dataset.df["energy_per_token"].mean() for dataset in datasets_dict.values()]
+
+        fig, ax = plt.subplots(1, len(model_names), figsize=(5*len(model_names), 10))
+
+        for i, model_name in enumerate(model_names):
+            print(model_name)
+            ax[i] = fig.add_subplot(1, len(model_names), i+1)
+            datasets_for_model = [dataset for dataset in datasets_dict.values() if model_name in dataset.name]
+            dataset_names_for_model = [dataset.name for dataset in datasets_for_model]
+            avg_energy_per_token_for_model = [dataset.df["energy_per_token"].mean() for dataset in datasets_for_model]
+
+            for j, dataset_name in enumerate(dataset_names_for_model):
+                # Find promptset name
+                promptset = dataset_name.split("_")[0]
+                # Find model size
+                model_size = dataset_name.split("_")[2:]
+                # Join model size to one string
+                model_size = "_".join(model_size)
+                print("-----" + dataset_name)
+                ax[i].bar(model_size, avg_energy_per_token_for_model[j], color=promptset_colors[promptset])
+
+            # ax[i].bar(dataset_names_for_model, avg_energy_per_token_for_model, color=promptset_colors[promptset])
+            ax[i].set_xlabel(model_name)
+            ax[i].set_ylabel('Energy consumption per token (kWh)')
+            ax[i].set_xticks(ax[i].get_xticks(), rotation=45, ha='right')
+
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == '__main__':
 
@@ -350,5 +409,8 @@ if __name__ == '__main__':
             dataset = Dataset(file_path, name=filename.split(".")[0])
             datasets[filename] = dataset
 
-    Dataset.plot_boxplot(datasets)
+
+    # Dataset.plot_boxplot(datasets)
+    # Dataset.plot_boxplot_subplots(datasets, datasetname="alpaca")
     # Dataset.compare_datasets(datasets)
+    Dataset.compare_energy_per_token(datasets)
