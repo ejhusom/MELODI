@@ -340,8 +340,6 @@ class Dataset():
         for dataset_name, dataset in datasets_dict.items():
             dataset.df['energy_per_token'] = dataset.df['energy_consumption_llm'] / dataset.df['response_token_length']
 
-        # avg_energy_per_token = [dataset.df["energy_per_token"].mean() for dataset in datasets_dict.values()]
-
         fig, ax = plt.subplots(1, len(model_names), figsize=(5*len(model_names), 10))
 
         for i, model_name in enumerate(model_names):
@@ -350,6 +348,13 @@ class Dataset():
             datasets_for_model = [dataset for dataset in datasets_dict.values() if model_name in dataset.name]
             dataset_names_for_model = [dataset.name for dataset in datasets_for_model]
             avg_energy_per_token_for_model = [dataset.df["energy_per_token"].mean() for dataset in datasets_for_model]
+
+            current_model_data = pd.DataFrame({
+                "dataset": dataset_names_for_model, 
+                "energy_per_token": avg_energy_per_token_for_model,
+                "promptset": [dataset_name.split("_")[0] for dataset_name in dataset_names_for_model],
+                "model_size_and_hardware" = ["_".join(dataset_name.split("_")[2:]) for dataset_name in dataset_names_for_model]
+            })
 
             for j, dataset_name in enumerate(dataset_names_for_model):
                 # Find promptset name
@@ -372,32 +377,6 @@ class Dataset():
 if __name__ == '__main__':
 
     datasets_path = config.DATA_DIR_PATH / "main_results"
-
-    # alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "main_results/alpaca_cpu_gemma2b.csv", name="alpaca-gemma-2b")
-
-    # alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma2b/dataset.csv", name="alpaca-gemma-2b")
-    # alpaca_gemma_2b.display_statistics()
-    # alpaca_gemma_2b.plot_distribution()
-    # alpaca_gemma_2b.perform_correlation_analysis()
-
-    # alpaca_gemma_7b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma7b/dataset.csv", name="alpaca-gemma-7b")
-    # alpaca_gemma_7b.display_statistics()
-    # alpaca_gemma_7b.plot_distribution()
-    # alpaca_gemma_7b.perform_correlation_analysis()
-
-    # alpaca_llama_8b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-llama3-8b/dataset.csv", name="alpaca-llama3-8b")
-    # alpaca_llama_8b.display_statistics()
-    # alpaca_llama_8b.plot_distribution()
-    # alpaca_llama_8b.perform_correlation_analysis()
-
-    # datasets = [
-    #         alpaca_gemma_2b,
-    #         alpaca_gemma_7b,
-    #         alpaca_llama_8b
-    # ]
-
-    # Dataset.compare_datasets(datasets)
-    # Dataset.plot_boxplot(datasets)
 
     datasets = {}
 
