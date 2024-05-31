@@ -190,34 +190,9 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def plot_boxplot_subplots(datasets_dict, datasetname=None):
+    def plot_boxplot(datasets_dict, promptset_colors=None):
 
-        if datasetname is not None:
-            filtered_datasets = {key: value for key, value in datasets_dict.items() if datasetname in key}
-            datasets = list(filtered_datasets.values())
-        else:
-            datasets = list(datasets_dict.values())
-
-        # Prepare the data for box plot
-        data = [dataset.df["energy_consumption_llm"] for dataset in datasets]
-        dataset_names = [dataset.name for dataset in datasets]
-        # Plot the box plot
-        fig, axes = plt.subplots(1, len(datasets), figsize=(5*len(datasets), 5))
-        for i, ax in enumerate(axes):
-            ax.boxplot(data[i], labels=[dataset_names[i]], patch_artist=True, showfliers=False, vert=1, notch=True)
-            ax.set_xlabel('Dataset')
-            ax.set_ylabel('Energy consumption (kWh)')
-            ax.set_title(dataset_names[i])
-        plt.tight_layout()
-        plt.show()
-
-    @staticmethod
-    def plot_boxplot(datasets_dict):
-
-        # The datasets must be sorted first by model size, then by model name
-        datasets_dict = dict(sorted(datasets_dict.items(), key=lambda x: (int(x[1].name.split("_")[2][:-1]), x[1].name.split("_")[1])))
-
-        datasets = list(datasets_dict.values())
+        datasets = [dataset["dataset"] for dataset in datasets_dict.values()]
 
         # Remove datasets with over 50b in model size
         datasets = [dataset for dataset in datasets if int(dataset.name.split("_")[2][:-1]) <= 50]
@@ -249,10 +224,6 @@ class Dataset():
 
         # Set the x-axis labels to the dataset names
         ax.set_xticklabels(new_dataset_names)
-
-
-        # Use another way to visualize the difference between the different models, using color or shape. Need to show the difference between "gemma", "llama3" and "codellama"
-
         
         # Add legend to plot explaining which color corresponds to which dataset
         alpaca_patch = mpl.patches.Patch(color=colors[0], label='Alpaca')
@@ -262,66 +233,12 @@ class Dataset():
 
         # Add labels and title
         ax.set_xlabel('Datasets')
-        ax.set_ylabel('Energy consumption (kWh)')
+        ax.set_ylabel('Energy consumption per prompt/response (kWh)')
         ax.set_title('Dataset comparison')
 
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
         plt.show()
-
-    @staticmethod
-    def compare_datasets(datasets_dict):
-        """Compare statistics of multiple datasets.
-
-        Args:
-            datasets_dict (dict): Dictionary containing Dataset objects as values.
-
-        """
-        stats = ["mean", "median", "std_dev", "min", "max", "range", "outliers"]
-
-        datasets = list(datasets_dict.values())
-
-        # Gather statistics for each dataset
-        values = [[dataset.statistics[stat]["energy_consumption_llm"] for stat in stats] for dataset in datasets]
-        values = np.array(values).T
-
-        dataset_names = [dataset.name for dataset in datasets]
-
-        # Print the statistics
-        print(f"{'Statistic':<15} {' '.join([dataset_name for dataset_name in dataset_names])}")
-        for i, stat in enumerate(stats):
-            print(f"{stat:<15} {' '.join([str(value) for value in values[i]])}")
-
-        # Print the statistics in a more readable format
-        print("\nStatistics:")
-        for i, stat in enumerate(stats):
-            print(f"{stat.capitalize()}:")
-            for j, dataset_name in enumerate(dataset_names):
-                print(f"  {dataset_name}: {values[i][j]}")
-
-        # Save the statistics in LaTeX format
-        # The numbers should be shown in scientific notation, but with a fixed number of decimal places
-        # The underscore character in the dataset names should be replaced with dashes
-        with open("statistics.tex", "w") as f:
-            f.write("\\begin{table}[H]\n")
-            f.write("\\centering\n")
-            f.write("\\begin{tabular}{l" + " ".join(["r" for _ in dataset_names]) + "}\n")
-            f.write("\\toprule\n")
-            f.write("Statistic & ")
-            for dataset_name in dataset_names:
-                f.write(f"{dataset_name.replace('_', '-')} & ")
-            f.write(" \\\\\n")
-            f.write("\\midrule\n")
-            for i, stat in enumerate(stats):
-                f.write(f"{stat.capitalize()} & ")
-                for j, dataset_name in enumerate(dataset_names):
-                    f.write(f"{values[i][j]:.2e}")
-                    if j < len(dataset_names) - 1:
-                        f.write(" & ")
-                f.write(" \\\\\n")
-            f.write("\\bottomrule\n")
-            f.write("\\end{tabular}\n")
-            f.write("\\end{table}\n")
 
     @staticmethod
     def compare_energy_per_token(datasets_dict):
@@ -370,54 +287,35 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def boxplot_energy_per_token(datasets_dict):
-
-        datasets = list(datasets_dict.values())
+    def boxplot_energy_per_token(datasets_dict, column="energy_consumption_llm", promptset_colors=None):
 
         # Remove datasets with over 50b in model size
-        datasets = [dataset for dataset in datasets if int(dataset.name.split("_")[2][:-1]) <= 50]
+        datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
 
+        datasets = [dataset["dataset"] for dataset in datasets_dict.values()]
+
+        # column = "energy_per_token"
         # Prepare the data for box plot
-        data = [dataset.df["energy_consumption_llm"] for dataset in datasets]
+        data = [dataset.df[column] for dataset in datasets]
         dataset_names = [dataset.name for dataset in datasets]
+        # labels = [datasets_dict[dataset_name]["promptset"] for dataset_name in dataset_names]
 
         # Plot the box plot
-        fig, ax = plt.subplots(figsize=(4,5))
+        fig, ax = plt.subplots(figsize=(5,6))
         bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
 
-        # Use colors depending on which dataset it is ("alpaca" or "codefeedback")
-        # Colorblind friendly colors:
-        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
-        new_dataset_names = []
-        for i, dataset_name in enumerate(dataset_names):
-            if "alpaca" in dataset_name:
-                color = colors[0]
-                color = colors[0]
-            else:
-                color = colors[1]
-            # for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
-            plt.setp(bp['boxes'][i], color=color)
+        for i, dataset in enumerate(datasets_dict):
+            plt.setp(bp['boxes'][i], color=datasets_dict[dataset]["color"])
             plt.setp(bp['medians'][i], color="red")
-            # Remove "alpaca" and "codefeedback" from the dataset name
-            dataset_name = dataset_name.replace("alpaca_", "").replace("codefeedback_", "")
-            new_dataset_names.append(dataset_name)
 
-        # Set the x-axis labels to the dataset names
-        ax.set_xticklabels(new_dataset_names)
-
-
-        # Use another way to visualize the difference between the different models, using color or shape. Need to show the difference between "gemma", "llama3" and "codellama"
-
-        
-        # Add legend to plot explaining which color corresponds to which dataset
-        alpaca_patch = mpl.patches.Patch(color=colors[0], label='Alpaca')
-        codefeedback_patch = mpl.patches.Patch(color=colors[1], label='CodeFeedback')
-        plt.legend(handles=[alpaca_patch, codefeedback_patch], loc='upper right')
-
+        # Add legend to plot explaining which color corresponds to which promptset
+        if promptset_colors:
+            handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
+            plt.legend(handles=handles, loc='upper left')
 
         # Add labels and title
         ax.set_xlabel('Datasets')
-        ax.set_ylabel('Energy consumption (kWh)')
+        ax.set_ylabel(column)
         ax.set_title('Dataset comparison')
 
         plt.xticks(rotation=45)
@@ -440,12 +338,23 @@ if __name__ == '__main__':
             # datasets[filename] = dataset
             datasets[filename] = {}
             datasets[filename]["dataset"] = dataset
-            datasets[filename]["color"] = colors.pop(0)
             datasets[filename]["promptset"] = filename.split("_")[0]
             # datasets[filename]["model_size"] = int(filename.split("_")[2])[:-1])
             datasets[filename]["model_size"] = filename.split("_")[2]
             datasets[filename]["model_name"] = filename.split("_")[1]
             datasets[filename]["hardware"] = filename.split("_")[3]
+
+    # Extract promptset from dataset names
+    promptsets = set([dataset["promptset"] for dataset in datasets.values()])
+    # Make a dict matching promptset to color
+    promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
+    # Extract model names from dataset names
+    model_names = set([dataset["model_name"] for dataset in datasets.values()])
+    # Extract hardware from dataset names
+    hardware = set([dataset["hardware"] for dataset in datasets.values()])
+
+    for dataset_name, dataset in datasets.items():
+        dataset["color"] = promptset_colors[dataset["promptset"]]
 
     datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
 
@@ -453,5 +362,6 @@ if __name__ == '__main__':
 
     # Dataset.plot_boxplot(datasets)
     # Dataset.plot_boxplot_subplots(datasets, datasetname="alpaca")
-    # Dataset.compare_datasets(datasets)
     # Dataset.compare_energy_per_token(datasets)
+    Dataset.boxplot_energy_per_token(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors)
+    Dataset.boxplot_energy_per_token(datasets, column="energy_per_token", promptset_colors=promptset_colors)
