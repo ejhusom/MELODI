@@ -9,6 +9,7 @@ Created:
     2024-05-28 tirsdag 13:57:24 
 
 """
+import os
 import matplotlib as mpl
 mpl.rcParams['axes.formatter.useoffset'] = False
 
@@ -154,8 +155,10 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def compare_datasets(datasets):
+    def compare_datasets_plot(datasets_dict):
         stats = ["mean", "median", "std_dev", "min", "max", "range"]#, "outliers"]
+
+        datasets = list(datasets_dict.values())
 
         # Gather statistics for each dataset
         values = [[dataset.statistics[stat]["energy_consumption_llm"] for stat in stats] for dataset in datasets]
@@ -186,47 +189,166 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def plot_boxplot(datasets):
+    def plot_boxplot(datasets_dict):
+
+        # The datasets must be sorted first by model size, then by model name
+        datasets_dict = dict(sorted(datasets_dict.items(), key=lambda x: (int(x[1].name.split("_")[2][:-1]), x[1].name.split("_")[1])))
+
+        datasets = list(datasets_dict.values())
+
+        # Remove datasets with over 50b in model size
+        datasets = [dataset for dataset in datasets if int(dataset.name.split("_")[2][:-1]) <= 50]
+
         # Prepare the data for box plot
         data = [dataset.df["energy_consumption_llm"] for dataset in datasets]
         dataset_names = [dataset.name for dataset in datasets]
 
         # Plot the box plot
-        fig, ax = plt.subplots(figsize=(12, 8))
-        ax.boxplot(data, labels=dataset_names, patch_artist=True)
+        fig, ax = plt.subplots(figsize=(4,5))
+        bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
+
+        # Use colors depending on which dataset it is ("alpaca" or "codefeedback")
+        # Colorblind friendly colors:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        new_dataset_names = []
+        for i, dataset_name in enumerate(dataset_names):
+            if "alpaca" in dataset_name:
+                color = colors[0]
+                color = colors[0]
+            else:
+                color = colors[1]
+            # for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+            plt.setp(bp['boxes'][i], color=color)
+            plt.setp(bp['medians'][i], color="red")
+            # Remove "alpaca" and "codefeedback" from the dataset name
+            dataset_name = dataset_name.replace("alpaca_", "").replace("codefeedback_", "")
+            new_dataset_names.append(dataset_name)
+
+        # Set the x-axis labels to the dataset names
+        ax.set_xticklabels(new_dataset_names)
+
+
+        # Use another way to visualize the difference between the different models, using color or shape. Need to show the difference between "gemma", "llama3" and "codellama"
+
+        
+        # Add legend to plot explaining which color corresponds to which dataset
+        alpaca_patch = mpl.patches.Patch(color=colors[0], label='Alpaca')
+        codefeedback_patch = mpl.patches.Patch(color=colors[1], label='CodeFeedback')
+        plt.legend(handles=[alpaca_patch, codefeedback_patch], loc='upper right')
+
 
         # Add labels and title
         ax.set_xlabel('Datasets')
-        ax.set_ylabel('Energy Consumption (LLM)')
-        ax.set_title('Energy Consumption Comparison Across Datasets')
+        ax.set_ylabel('Energy consumption (kWh)')
+        ax.set_title('Dataset comparison')
 
+        plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
 
+    @staticmethod
+    def compare_datasets(datasets_dict):
+        """Compare statistics of multiple datasets.
+
+        Args:
+            datasets_dict (dict): Dictionary containing Dataset objects as values.
+
+        """
+        stats = ["mean", "median", "std_dev", "min", "max", "range", "outliers"]
+
+        datasets = list(datasets_dict.values())
+
+        # Gather statistics for each dataset
+        values = [[dataset.statistics[stat]["energy_consumption_llm"] for stat in stats] for dataset in datasets]
+        values = np.array(values).T
+
+        dataset_names = [dataset.name for dataset in datasets]
+
+        # Print the statistics
+        print(f"{'Statistic':<15} {' '.join([dataset_name for dataset_name in dataset_names])}")
+        for i, stat in enumerate(stats):
+            print(f"{stat:<15} {' '.join([str(value) for value in values[i]])}")
+
+        # Print the statistics in a more readable format
+        print("\nStatistics:")
+        for i, stat in enumerate(stats):
+            print(f"{stat.capitalize()}:")
+            for j, dataset_name in enumerate(dataset_names):
+                print(f"  {dataset_name}: {values[i][j]}")
+
+        # Save the statistics in LaTeX format
+        # The numbers should be shown in scientific notation, but with a fixed number of decimal places
+        # The underscore character in the dataset names should be replaced with dashes
+        with open("statistics.tex", "w") as f:
+            f.write("\\begin{table}[H]\n")
+            f.write("\\centering\n")
+            f.write("\\begin{tabular}{l" + " ".join(["r" for _ in dataset_names]) + "}\n")
+            f.write("\\toprule\n")
+            f.write("Statistic & ")
+            for dataset_name in dataset_names:
+                f.write(f"{dataset_name.replace('_', '-')} & ")
+            f.write(" \\\\\n")
+            f.write("\\midrule\n")
+            for i, stat in enumerate(stats):
+                f.write(f"{stat.capitalize()} & ")
+                for j, dataset_name in enumerate(dataset_names):
+                    f.write(f"{values[i][j]:.2e}")
+                    if j < len(dataset_names) - 1:
+                        f.write(" & ")
+                f.write(" \\\\\n")
+            f.write("\\bottomrule\n")
+            f.write("\\end{tabular}\n")
+            f.write("\\end{table}\n")
+
+    @staticmethod
+    def comparison_plot(datasets_dict):
+        """Compare datasets across several dimensions: Model type, model size, dataset, and hardware.
+
+        Args:
+            datasets_dict (dict): Dictionary containing Dataset objects as values.
+
+        """
+        pass
+
 if __name__ == '__main__':
 
-    alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma2b/dataset.csv", name="alpaca-gemma-2b")
-    alpaca_gemma_2b.display_statistics()
-    alpaca_gemma_2b.plot_distribution()
-    alpaca_gemma_2b.perform_correlation_analysis()
+    datasets_path = config.DATA_DIR_PATH / "main_results"
 
-    alpaca_gemma_7b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma7b/dataset.csv", name="alpaca-gemma-7b")
-    alpaca_gemma_7b.display_statistics()
-    alpaca_gemma_7b.plot_distribution()
-    alpaca_gemma_7b.perform_correlation_analysis()
+    # alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "main_results/alpaca_cpu_gemma2b.csv", name="alpaca-gemma-2b")
 
-    alpaca_llama_8b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-llama3-8b/dataset.csv", name="alpaca-llama3-8b")
-    alpaca_llama_8b.display_statistics()
-    alpaca_llama_8b.plot_distribution()
-    alpaca_llama_8b.perform_correlation_analysis()
+    # alpaca_gemma_2b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma2b/dataset.csv", name="alpaca-gemma-2b")
+    # alpaca_gemma_2b.display_statistics()
+    # alpaca_gemma_2b.plot_distribution()
+    # alpaca_gemma_2b.perform_correlation_analysis()
 
-    datasets = [
-            alpaca_gemma_2b,
-            alpaca_gemma_7b,
-            alpaca_llama_8b
-    ]
+    # alpaca_gemma_7b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-gemma7b/dataset.csv", name="alpaca-gemma-7b")
+    # alpaca_gemma_7b.display_statistics()
+    # alpaca_gemma_7b.plot_distribution()
+    # alpaca_gemma_7b.perform_correlation_analysis()
+
+    # alpaca_llama_8b = Dataset(config.DATA_DIR_PATH / "final-results/alpaca-llama3-8b/dataset.csv", name="alpaca-llama3-8b")
+    # alpaca_llama_8b.display_statistics()
+    # alpaca_llama_8b.plot_distribution()
+    # alpaca_llama_8b.perform_correlation_analysis()
+
+    # datasets = [
+    #         alpaca_gemma_2b,
+    #         alpaca_gemma_7b,
+    #         alpaca_llama_8b
+    # ]
 
     # Dataset.compare_datasets(datasets)
-    Dataset.plot_boxplot(datasets)
+    # Dataset.plot_boxplot(datasets)
 
-    #  breakpoint()
+    datasets = {}
+
+    # loop through all files in the directory
+    for filename in os.listdir(datasets_path):
+        if filename.endswith('.csv'):  # check if the file is a CSV
+            print(filename)
+            file_path = os.path.join(datasets_path, filename)  # get full file path
+            dataset = Dataset(file_path, name=filename.split(".")[0])
+            datasets[filename] = dataset
+
+    Dataset.plot_boxplot(datasets)
+    # Dataset.compare_datasets(datasets)
