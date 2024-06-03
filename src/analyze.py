@@ -363,6 +363,15 @@ class Dataset():
         
         dataset_names = new_dataset_names
 
+        hardware_setups = set([dataset["dataset"].name.split("_")[3].split(".")[0] for dataset in datasets_dict.values()])
+
+        # Make different hatch patters for different hardware setups, up to 10 different patterns
+        density = 4
+        hatches = ["|", "-", "x", "\\", "o", "O", ".", "/", "*", "+"]
+        hatches = [hatch * density for hatch in hatches]
+        # Match different hatches to hardware setups
+        hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
+
         # Plot the box plot
         fig, ax = plt.subplots(figsize=(5,6))
         bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
@@ -371,10 +380,26 @@ class Dataset():
             plt.setp(bp['boxes'][i], color=datasets_dict[dataset]["color"])
             plt.setp(bp['medians'][i], color="red")
 
+        for patch, hatch in zip(bp['boxes'], [hardware_hatches[dataset["dataset"].name.split("_")[3].split(".")[0]] for dataset in datasets_dict.values()]):
+            patch.set_hatch(hatch)
+            fc = patch.get_facecolor()
+            patch.set_edgecolor(fc)
+            patch.set_facecolor('white')
+
+
+        # Add legend to plot explaining which hatch corresponds to which hardware setup
+        handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
+        legend_title = "Hardware setup"
+
         # Add legend to plot explaining which color corresponds to which promptset
         if promptset_colors:
-            handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
-            plt.legend(handles=handles, loc='upper left')
+            handles_promptset = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
+            handles += handles_promptset
+            legend_title += " / Promptset"
+
+        # Add both handles to legend
+        plt.legend(handles=handles, loc='upper left', title=legend_title)
+
 
         # Add labels and title
         ax.set_xlabel('Datasets')
