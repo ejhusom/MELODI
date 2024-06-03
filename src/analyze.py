@@ -357,8 +357,12 @@ class Dataset():
         # labels = [datasets_dict[dataset_name]["promptset"] for dataset_name in dataset_names]
 
         new_dataset_names = []
+        # Remove unnecessary parts of dataset names
         for i, dataset_name in enumerate(dataset_names):
+            # Remove promptset 
             dataset_name = "_".join(dataset_name.split("_")[1:])
+            # Remove hardware
+            dataset_name = "_".join(dataset_name.split("_")[:-1])
             new_dataset_names.append(dataset_name)
         
         dataset_names = new_dataset_names
