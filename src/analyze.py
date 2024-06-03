@@ -85,13 +85,29 @@ class Dataset():
         return statistics
 
     def display_statistics(self):
-        print("Number of samples:", len(self.df))
-        print("Mean energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].mean())
-        print("Median energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].median())
-        print("Standard deviation of energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].std())
-        print("Mean energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].mean())
-        print("Median energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].median())
-        print("Standard deviation of energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].std())
+        """Print statistics for the dataset, in this latex table format:
+
+                & Prompt dataset & Model & Hardware & No. of prompts & Mean energy cons. & Mean response length \\
+     1 & Alpaca & gemma:2b & Workstation & 123 & 0.1 & 10 \\
+
+        """
+
+        # Extract model name and size from dataset name
+        promptset = self.name.split("_")[0]
+        model_name = self.name.split("_")[1]
+        model_size = self.name.split("_")[2]
+        hardware = self.name.split("_")[3].split(".")[0]
+
+        # Extract statistics
+        statistics = self.statistics
+
+        # Extract relevant statistics
+        mean_energy_consumption = statistics.loc["energy_consumption_llm", "mean"]
+        mean_response_length = statistics.loc["response_token_length", "mean"]
+        number_of_prompts = len(self.df)
+
+        # Print statistics. The energy consumption must be in scientific format with 2 decimals
+        print(f"& {promptset} & {model_name} & {model_size} & {hardware} & {number_of_prompts} & {mean_energy_consumption:.2e} & {mean_response_length:.2f} \\\\")
 
 
     def plot_distribution(self, include_density_plots=False):
@@ -343,13 +359,22 @@ class Dataset():
 
 
     @staticmethod
-    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None, filter_model_size=True, shade_by_model_name_only=False):
+    def boxplot_comparison(datasets_dict, column="energy_consumption_llm",
+                           promptset_colors=None, filter_model_size=True,
+                           shade_by_model_name_only=False, showlegend=True, hardware_hatches=None):
 
         # Remove datasets with over 50b in model size
         if filter_model_size:
             datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
 
         datasets = [dataset["dataset"] for dataset in datasets_dict.values()]
+
+        # If column is energy_consumption_llm, rename this column "energy_per_response"
+        if column == "energy_consumption_llm":
+            new_column_name = "energy_per_response"
+            for dataset in datasets:
+                dataset.df[new_column_name] = dataset.df["energy_consumption_llm"]
+            column = new_column_name
 
         # Prepare the data for box plot
         data = [dataset.df[column] for dataset in datasets]
@@ -360,24 +385,44 @@ class Dataset():
         for i, dataset_name in enumerate(dataset_names):
             # Remove promptset 
             dataset_name = "_".join(dataset_name.split("_")[1:])
-            # Remove hardware
-            dataset_name = "_".join(dataset_name.split("_")[:-1])
-            new_dataset_names.append(dataset_name)
+            if not filter_model_size and int(dataset_name.split("_")[1][:-1]) < 50:
+                new_dataset_names.append(dataset_name)
+            else:
+                # Remove hardware
+                dataset_name = "_".join(dataset_name.split("_")[:-1])
+                new_dataset_names.append(dataset_name)
         
         dataset_names = new_dataset_names
 
-        hardware_setups = set([dataset["dataset"].name.split("_")[3].split(".")[0] for dataset in datasets_dict.values()])
+        # hardware_setups = set([dataset["dataset"].name.split("_")[3].split(".")[0] for dataset in datasets_dict.values()])
 
-        # Make different hatch patters for different hardware setups, up to 10 different patterns
-        density = 4
-        hatches = ["|", "-", "x", "\\", "o", "O", ".", "/", "*", "+"]
-        hatches = [hatch * density for hatch in hatches]
-        # Match different hatches to hardware setups
-        hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
+        # # Make different hatch patters for different hardware setups, up to 10 different patterns
+        # density = 3
+        # hatches = ["|", "-", "x", "\\", "o", "O", ".", "/", "*", "+"]
+        # hatches = [hatch * density for hatch in hatches]
+        # # Match different hatches to hardware setups
+        # hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
+
+        if filter_model_size:
+            if showlegend:
+                figsize = (5.1, 4.5)
+            else:
+                figsize = (4, 4)
+        else:
+            if showlegend:
+                figsize = (4.4, 4.0)
+            else:
+                figsize = (3, 3.5)
 
         # Plot the box plot
-        fig, ax = plt.subplots(figsize=(7,3.5))
-        bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
+        fig, ax = plt.subplots(figsize=figsize)
+        bp = ax.boxplot(data, labels=dataset_names, patch_artist=True,
+                        showfliers=False, vert=1, notch=True,
+                        boxprops=dict(linewidth=0.5),
+                        whiskerprops=dict(linewidth=0.5),
+                        medianprops=dict(linewidth=0.5),
+                        meanprops=dict(linewidth=0.5),
+                        capprops=dict(linewidth=0.5))
 
         for i, dataset in enumerate(datasets_dict):
             plt.setp(bp['boxes'][i], color=datasets_dict[dataset]["color"])
@@ -385,9 +430,14 @@ class Dataset():
 
         for patch, hatch in zip(bp['boxes'], [hardware_hatches[dataset["dataset"].name.split("_")[3].split(".")[0]] for dataset in datasets_dict.values()]):
             patch.set_hatch(hatch)
+            patch.set_linewidth(0.5)
             fc = patch.get_facecolor()
             patch.set_edgecolor(fc)
             patch.set_facecolor('white')
+
+        # Adjust hatch linewidth for each box
+        # for patch in bp['boxes']:
+        #     patch.set_linewidth(0.5)  # Adjust the linewidth as needed
 
         # Add legend to plot explaining which hatch corresponds to which hardware setup
         handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
@@ -439,7 +489,8 @@ class Dataset():
             legend_title += "/Promptset"
 
         # Add both handles to legend
-        plt.legend(handles=handles, loc='upper left', title=legend_title, bbox_to_anchor=(1, 1))
+        if showlegend:
+            plt.legend(handles=handles, loc='upper left', title=legend_title, bbox_to_anchor=(1, 1))
 
         if shade_by_model_name_only:
             # Get the model sizes from the dataset names
@@ -454,7 +505,7 @@ class Dataset():
             ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
         # Add labels and title
-        ax.set_ylabel(column)
+        ax.set_ylabel(column + " (kWh)")
         # ax.set_xlabel('Datasets')
         # if shade_by_model_name_only:
         #     ax.xaxis.set_label_coords(0.5, -0.15)  # Adjust the position of xlabel
@@ -471,6 +522,61 @@ class Dataset():
         plt.savefig(config.PLOTS_DIR_PATH / f"{plot_filename}.pdf", bbox_inches='tight')
         plt.show()
 
+def analyze_per_promptset(datasets_dict):
+    """Analyze the datasets per promptset.
+
+    Find:
+    - Mean energy consumption per prompt in each promptset
+    - Mean response length in each promptset
+
+    Print out the results in this latex table format:
+
+    Prompt dataset & Avg. energy cons. (kWh) & Avg. response token length \\
+
+    """
+    promptsets = set([dataset["promptset"] for dataset in datasets_dict.values()])
+
+    for promptset in promptsets:
+        datasets_in_promptset = [dataset for dataset in datasets_dict.values() if dataset["promptset"] == promptset]
+        energy_consumptions = [dataset["dataset"].statistics.loc["energy_consumption_llm", "mean"] for dataset in datasets_in_promptset]
+        response_lengths = [dataset["dataset"].statistics.loc["response_token_length", "mean"] for dataset in datasets_in_promptset]
+
+        # Compute the averates across all datasets in the promptset
+        avg_energy_consumption = np.mean(energy_consumptions)
+        avg_response_length = np.mean(response_lengths)
+
+        # Print the results
+        print(f"& {promptset} & {avg_energy_consumption:.2e} & {avg_response_length:.2f} \\\\")
+
+def analyze_per_model(datasets_dict):
+    """Analyze the datasets per model (model name and size).
+
+    Find:
+    - Mean energy consumption per prompt in each model
+    - Mean response length in each model
+
+    It is important to distinguish between different models, as they may have different sizes.
+
+    Print out the results in this latex table format:
+
+    Model & Avg. energy cons. (kWh) & Avg. response token length \\
+
+    """
+    model_names = set([dataset["model_name_and_size"] for dataset in datasets_dict.values()])
+
+    for model_name in model_names:
+        datasets_in_model = [dataset for dataset in datasets_dict.values() if dataset["model_name_and_size"] == model_name]
+        energy_consumptions = [dataset["dataset"].statistics.loc["energy_consumption_llm", "mean"] for dataset in datasets_in_model]
+        response_lengths = [dataset["dataset"].statistics.loc["response_token_length", "mean"] for dataset in datasets_in_model]
+
+        # Compute the averates across all datasets in the model
+        avg_energy_consumption = np.mean(energy_consumptions)
+        avg_response_length = np.mean(response_lengths)
+
+        # Print the results
+        print(f"& {model_name} & {avg_energy_consumption:.2e} & {avg_response_length:.2f} \\\\")
+
+        
 def generate_promptset_colors(datasets_dict):
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
     # Extract promptset from dataset names
@@ -480,6 +586,18 @@ def generate_promptset_colors(datasets_dict):
     # Extract model names from dataset names
 
     return promptset_colors
+
+def generate_hardware_hatches(datasets_dict, density=3):
+    # Extract hardware from dataset names
+    hardware_setups = set([dataset["hardware"] for dataset in datasets_dict.values()])
+
+    # Make different hatch patters for different hardware setups, up to 10 different patterns
+    hatches = ["|", "-", "x", "\\", "o", "O", ".", "/", "*", "+"]
+    hatches = [hatch * density for hatch in hatches]
+    # Match different hatches to hardware setups
+    hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
+
+    return hardware_hatches
 
 if __name__ == '__main__':
 
@@ -504,21 +622,22 @@ if __name__ == '__main__':
             datasets[filename]["model_name_and_size"] = filename.split("_")[1] + "_" + filename.split("_")[2]
             datasets[filename]["hardware"] = filename.split("_")[3].split(".")[0]
 
-    promptset_colors = generate_promptset_colors(datasets)
-
     # Extract model names from dataset names
     model_names = set([dataset["model_name"] for dataset in datasets.values()])
     # Extract hardware from dataset names
     hardware = set([dataset["hardware"] for dataset in datasets.values()])
-
-    for dataset_name, dataset in datasets.items():
-        dataset["color"] = promptset_colors[dataset["promptset"]]
 
     sorted_keys = sorted(
         datasets.keys(),
         key=lambda x: (x.split('_')[1], int(x.split('_')[2][:-1]))
     )
     datasets = {key: datasets[key] for key in sorted_keys}
+
+    promptset_colors = generate_promptset_colors(datasets)
+    hardware_hatches = generate_hardware_hatches(datasets)
+
+    for dataset_name, dataset in datasets.items():
+        dataset["color"] = promptset_colors[dataset["promptset"]]
 
     # Combine the dfs into one
     df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
@@ -527,29 +646,32 @@ if __name__ == '__main__':
     # Dataset.plot_single_correlations(df)
 
     # Iterate through the datasets and print number of samples in each, mean energy consumption, etc.
-    # for dataset_name, dataset in datasets.items():
-    #     print(f"Dataset: {dataset_name}")
-    #     dataset["dataset"].display_statistics()
-    #     print("\n")
+    for dataset_name, dataset in datasets.items():
+        # print(f"Dataset: {dataset_name}")
+        dataset["dataset"].display_statistics()
+        # print("\n")
 
+    print("Analysis per promptset:")
+    analyze_per_promptset(datasets)
+    print("Analysis per model:")
+    analyze_per_model(datasets)
 
     # Dataset.compare_energy_per_token(datasets)
 
-    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
-    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
+    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True, showlegend=False, hardware_hatches=hardware_hatches)
+    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True, showlegend=True, hardware_hatches=hardware_hatches)
 
-    models_to_include = [
-            "codellama-70b",
-            "llama3-8b",
-            "llama3-70b"
-    ]
+    # models_to_include = [
+    #         "alpaca_llama3_70b_server.csv",
+    #         "alpaca_llama3_8b_laptop2.csv",
+    #         "codefeedback_codellama_70b_workstation.csv"
+    # ]
 
-    # Filter out models not in models_to_include
-    datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset["model_name"] in models_to_include}
-    breakpoint()
+    # # Filter out models not in models_to_include
+    # datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset_name in models_to_include}
 
-    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
-    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
+    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False, showlegend=False, hardware_hatches=hardware_hatches)
+    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False, showlegend=True, hardware_hatches=hardware_hatches)
 
     # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
     #                                     subplot_dimension="model_name_and_size",
