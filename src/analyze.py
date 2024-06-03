@@ -580,7 +580,7 @@ def analyze_per_model(datasets_dict):
 def generate_promptset_colors(datasets_dict):
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
     # Extract promptset from dataset names
-    promptsets = set([dataset["promptset"] for dataset in datasets.values()])
+    promptsets = set([dataset["promptset"] for dataset in datasets_dict.values()])
     # Make a dict matching promptset to color
     promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
     # Extract model names from dataset names
@@ -599,13 +599,13 @@ def generate_hardware_hatches(datasets_dict, density=3):
 
     return hardware_hatches
 
-if __name__ == '__main__':
+def preprocess_datasets():
 
     datasets_path = config.DATA_DIR_PATH / "main_results"
 
     datasets = {}
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
 
+    print("Preprocessing datasets...")
     # loop through all files in the directory
     for filename in os.listdir(datasets_path):
         if filename.endswith('.csv'):  # check if the file is a CSV
@@ -638,6 +638,7 @@ if __name__ == '__main__':
 
     for dataset_name, dataset in datasets.items():
         dataset["color"] = promptset_colors[dataset["promptset"]]
+        dataset["hatch"] = hardware_hatches[dataset["hardware"]]
 
     # Combine the dfs into one
     df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
@@ -645,47 +646,66 @@ if __name__ == '__main__':
     # Plot correlation for all datasets
     # Dataset.plot_single_correlations(df)
 
+    print("Datasets preprocessed.")
+    print("\n")
+
+    return datasets, promptset_colors, hardware_hatches
+
+def generate_statistics(datasets):
+
     # Iterate through the datasets and print number of samples in each, mean energy consumption, etc.
+    print("Statistics for each dataset:")
     for dataset_name, dataset in datasets.items():
         # print(f"Dataset: {dataset_name}")
         dataset["dataset"].display_statistics()
-        # print("\n")
+
+    print("\n")
 
     print("Analysis per promptset:")
     analyze_per_promptset(datasets)
+    print("\n")
     print("Analysis per model:")
     analyze_per_model(datasets)
+    print("\n")
 
-    # Dataset.compare_energy_per_token(datasets)
+def generate_plots(datasets, promptset_colors, hardware_hatches):
+    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True, showlegend=False, hardware_hatches=hardware_hatches)
+    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True, showlegend=True, hardware_hatches=hardware_hatches)
 
-    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True, showlegend=False, hardware_hatches=hardware_hatches)
-    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True, showlegend=True, hardware_hatches=hardware_hatches)
+    models_to_include = [
+            "alpaca_llama3_70b_server.csv",
+            "alpaca_llama3_8b_laptop2.csv",
+            "codefeedback_codellama_70b_workstation.csv"
+    ]
 
-    # models_to_include = [
-    #         "alpaca_llama3_70b_server.csv",
-    #         "alpaca_llama3_8b_laptop2.csv",
-    #         "codefeedback_codellama_70b_workstation.csv"
-    # ]
+    # Filter out models not in models_to_include
+    datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset_name in models_to_include}
 
-    # # Filter out models not in models_to_include
-    # datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset_name in models_to_include}
+    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False, showlegend=False, hardware_hatches=hardware_hatches)
+    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False, showlegend=True, hardware_hatches=hardware_hatches)
 
-    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False, showlegend=False, hardware_hatches=hardware_hatches)
-    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False, showlegend=True, hardware_hatches=hardware_hatches)
+def generate_subplots(datasets, promptset_colors, hardware_hatches):
+    Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
+                                        subplot_dimension="model_name_and_size",
+                                        promptset_colors=promptset_colors,
+                                        filter_model_size=False)
+    Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
+                                        subplot_dimension="model_name_and_size",
+                                        promptset_colors=promptset_colors,
+                                        filter_model_size=False)
+    Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
+                                        subplot_dimension="hardware",
+                                        promptset_colors=promptset_colors,
+                                        filter_model_size=False)
+    Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
+                                        subplot_dimension="hardware",
+                                        promptset_colors=promptset_colors,
+                                        filter_model_size=False)
 
-    # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
-    #                                     subplot_dimension="model_name_and_size",
-    #                                     promptset_colors=promptset_colors,
-    #                                     filter_model_size=False)
-    # Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
-    #                                     subplot_dimension="model_name_and_size",
-    #                                     promptset_colors=promptset_colors,
-    #                                     filter_model_size=False)
-    # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
-    #                                     subplot_dimension="hardware",
-    #                                     promptset_colors=promptset_colors,
-    #                                     filter_model_size=False)
-    # Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
-    #                                     subplot_dimension="hardware",
-    #                                     promptset_colors=promptset_colors,
-    #                                     filter_model_size=False)
+if __name__ == '__main__':
+
+    datasets, promptset_colors, hardware_hatches = preprocess_datasets()
+    generate_statistics(datasets)
+    generate_plots(datasets, promptset_colors, hardware_hatches)
+    generate_subplots(datasets, promptset_colors, hardware_hatches)
+
