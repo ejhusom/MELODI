@@ -343,7 +343,7 @@ class Dataset():
 
 
     @staticmethod
-    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None, filter_model_size=True):
+    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None, filter_model_size=True, shade_by_model_name_only=False):
 
         # Remove datasets with over 50b in model size
         if filter_model_size:
@@ -354,7 +354,6 @@ class Dataset():
         # Prepare the data for box plot
         data = [dataset.df[column] for dataset in datasets]
         dataset_names = [dataset.name for dataset in datasets]
-        # labels = [datasets_dict[dataset_name]["promptset"] for dataset_name in dataset_names]
 
         new_dataset_names = []
         # Remove unnecessary parts of dataset names
@@ -377,7 +376,7 @@ class Dataset():
         hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
 
         # Plot the box plot
-        fig, ax = plt.subplots(figsize=(5,6))
+        fig, ax = plt.subplots(figsize=(7,3.5))
         bp = ax.boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
 
         for i, dataset in enumerate(datasets_dict):
@@ -390,28 +389,92 @@ class Dataset():
             patch.set_edgecolor(fc)
             patch.set_facecolor('white')
 
-
         # Add legend to plot explaining which hatch corresponds to which hardware setup
         handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
         legend_title = "Hardware setup"
+
+        # Identify unique model names and their positions
+        if shade_by_model_name_only:
+            model_names = sorted(set([name.split("_")[0] for name in dataset_names]))
+        else:
+            # model_names = sorted(set([name for name in dataset_names]))
+            # Sort model names ([modelname]_[size]b) alphabetically by the model name and the numerically by the size
+            model_names = sorted(
+                set([name for name in dataset_names]),
+                key=lambda x: (x.split("_")[0], int(x.split("_")[1][:-1]))
+            )
+        model_positions = {model: [] for model in model_names}
+        for i, name in enumerate(dataset_names):
+            if shade_by_model_name_only:
+                model_name = name.split("_")[0]
+            else:
+                model_name = name
+            model_positions[model_name].append(i + 1)
+
+        # Shade background based on model names
+        for i, model in enumerate(model_names):
+            positions = model_positions[model]
+            start = positions[0] - 0.5
+            end = positions[-1] + 0.5
+            color = 'grey' if i % 2 == 0 else 'whitesmoke'
+            ax.axvspan(start, end, color=color, alpha=0.3)
+
+            # Add label for each shaded area
+            if shade_by_model_name_only:
+                position_adjustment = 0.1
+            else:
+                position_adjustment = 0.05
+
+            # text_length = len(model)
+            # offset = text_length * 0.0001
+            # # ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment, model, ha='center', va='center', fontsize=10, color='black')
+            # ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment - offset, model, ha="center", va='center', fontsize=10, color='black')
+
+            va = 'bottom' if i % 2 == 0 else 'top'  # Vertical alignment
+            ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment, model, ha="center", va=va, fontsize=10, color='black')
+
+
+        # Add legend to plot explaining which hatch corresponds to which hardware setup
+        handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
+        legend_title = "Hardware"
 
         # Add legend to plot explaining which color corresponds to which promptset
         if promptset_colors:
             handles_promptset = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
             handles += handles_promptset
-            legend_title += " / Promptset"
+            legend_title += "/Promptset"
 
         # Add both handles to legend
-        plt.legend(handles=handles, loc='upper left', title=legend_title)
+        plt.legend(handles=handles, loc='upper left', title=legend_title, bbox_to_anchor=(1, 1))
 
+        if shade_by_model_name_only:
+            # Get the model sizes from the dataset names
+            model_sizes = [name.split("_")[1] for name in dataset_names]
+
+            # Set the xticklabels to only display the model sizes
+            ax.set_xticklabels(model_sizes)
+        else:
+            # If shading is done by specific model AND size, then no xticks are needed.
+            ax.set_xticklabels([])
+            # Remove xticks (labels and tick marks)
+            ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
         # Add labels and title
-        ax.set_xlabel('Datasets')
         ax.set_ylabel(column)
-        ax.set_title('Dataset comparison')
+        # ax.set_xlabel('Datasets')
+        # if shade_by_model_name_only:
+        #     ax.xaxis.set_label_coords(0.5, -0.15)  # Adjust the position of xlabel
+        # else:
+        #     ax.xaxis.set_label_coords(0.5, -0.08)  # Adjust the position of xlabel
+
+        plt.tight_layout()
+
+        plot_filename = f"boxplot_comparison_{column}"
+        if filter_model_size:
+            plot_filename += "_large_models_removed"
 
         plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
+        plt.savefig(config.PLOTS_DIR_PATH / f"{plot_filename}.pdf", bbox_inches='tight')
         plt.show()
 
 if __name__ == '__main__':
@@ -472,6 +535,9 @@ if __name__ == '__main__':
 
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
+
+    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
+    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
 
     # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
     #                                     subplot_dimension="model_name_and_size",
