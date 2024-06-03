@@ -20,7 +20,6 @@ import seaborn as sns
 
 from config import config
 
-
 class Dataset():
 
     def __init__(self, filename, name="dataset"):
@@ -54,13 +53,17 @@ class Dataset():
 
     def calculate_statistics(self):
         # Calculate descriptive statistics for relevant columns
+
+        self.df["energy_per_token"] = self.df["energy_consumption_llm"] / self.df["response_token_length"]
+
         numeric_columns = [
             'total_duration', 'load_duration', 'prompt_token_length',
             'prompt_duration', 'response_token_length', 'response_duration',
             'energy_consumption_monitoring', 'energy_consumption_llm_cpu',
             'energy_consumption_llm_gpu', 'energy_consumption_llm_total',
-            'energy_consumption_llm'
+            'energy_consumption_llm', "energy_per_token"
         ]
+
 
         statistics = self.df[numeric_columns].describe(percentiles=[.01, .05, .25, .5, .75, .95, .99]).T
         statistics['median'] = self.df[numeric_columns].median()
@@ -70,7 +73,6 @@ class Dataset():
         statistics['skewness'] = self.df[numeric_columns].skew()
         statistics['kurtosis'] = self.df[numeric_columns].kurtosis()
         statistics['std_dev'] = self.df[numeric_columns].std()
-        self.df["energy_per_token"] = self.df["energy_consumption_llm"] / self.df["response_token_length"]
 
         # Outlier detection using IQR method
         Q1 = self.df[numeric_columns].quantile(0.25)
@@ -83,7 +85,14 @@ class Dataset():
         return statistics
 
     def display_statistics(self):
-        print("Descriptive Statistics:\n", self.statistics)
+        print("Number of samples:", len(self.df))
+        print("Mean energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].mean())
+        print("Median energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].median())
+        print("Standard deviation of energy consumption (kWh):", self.statistics.loc['energy_consumption_llm'].std())
+        print("Mean energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].mean())
+        print("Median energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].median())
+        print("Standard deviation of energy consumption per token (kWh):", self.statistics.loc['energy_per_token'].std())
+
 
     def plot_distribution(self, include_density_plots=False):
         # Plot distribution of relevant columns
@@ -240,6 +249,39 @@ class Dataset():
         plt.tight_layout()
         plt.show()
 
+
+    @staticmethod
+    def plot_single_correlations(df):
+        # Calculate correlations with "energy_consumption_llm"
+        correlations = df.corrwith(df["energy_consumption_llm"], numeric_only=True).sort_values(ascending=False)
+
+        # Columns to drop
+        drop_columns = [
+            "energy_consumption_llm",
+            "energy_consumption_llm_cpu",
+            "energy_consumption_llm_gpu",
+            "energy_consumption_llm_total",
+            "energy_consumption_monitoring",
+            "energy_per_token",
+            "Unnamed: 0",
+        ]
+
+        for col in drop_columns:
+            correlations.drop(col, inplace=True)
+
+        # Only include the top 10 correlations
+        correlations = correlations.head(10)
+
+        # Create a bar plot for visualizing correlations
+        plt.figure(figsize=(6, 4))
+        sns.barplot(x=correlations.values, y=correlations.index, palette="viridis")
+        # plt.title("Correlation with Total Energy Consumption")
+        plt.xlabel("Correlation Coefficient")
+        plt.ylabel("Features")
+        plt.tight_layout()
+        plt.savefig(config.PLOTS_DIR_PATH / "correlation_with_energy_consumption.pdf")
+        plt.show()
+
     @staticmethod
     def compare_energy_per_token(datasets_dict):
         # Calculate energy consumption per generated token in the response
@@ -287,7 +329,7 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def boxplot_energy_per_token(datasets_dict, column="energy_consumption_llm", promptset_colors=None):
+    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None):
 
         # Remove datasets with over 50b in model size
         datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
@@ -342,7 +384,7 @@ if __name__ == '__main__':
             # datasets[filename]["model_size"] = int(filename.split("_")[2])[:-1])
             datasets[filename]["model_size"] = filename.split("_")[2]
             datasets[filename]["model_name"] = filename.split("_")[1]
-            datasets[filename]["hardware"] = filename.split("_")[3]
+            datasets[filename]["hardware"] = filename.split("_")[3].split(".")[0]
 
     # Extract promptset from dataset names
     promptsets = set([dataset["promptset"] for dataset in datasets.values()])
@@ -358,10 +400,21 @@ if __name__ == '__main__':
 
     datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
 
-    print(datasets)
+    # Combine the dfs into one
+    df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
+    # df.to_csv(config.DATA_DIR_PATH / "all-results" / "combined_results.csv")
+    # Plot correlation for all datasets
+    # Dataset.plot_single_correlations(df)
 
-    # Dataset.plot_boxplot(datasets)
+    # Iterate through the datasets and print number of samples in each, mean energy consumption, etc.
+    # for dataset_name, dataset in datasets.items():
+    #     print(f"Dataset: {dataset_name}")
+    #     dataset["dataset"].display_statistics()
+    #     print("\n")
+
+
+    Dataset.plot_boxplot(datasets)
     # Dataset.plot_boxplot_subplots(datasets, datasetname="alpaca")
     # Dataset.compare_energy_per_token(datasets)
-    Dataset.boxplot_energy_per_token(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors)
-    Dataset.boxplot_energy_per_token(datasets, column="energy_per_token", promptset_colors=promptset_colors)
+    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors)
+    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors)

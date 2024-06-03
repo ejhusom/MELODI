@@ -30,6 +30,7 @@ class Config:
 
         # PATHS AND FILENAMES
         self.DATA_DIR_PATH = Path("./data/")
+        self.PLOTS_DIR_PATH = Path("./plots/")
         self.CONFIG_FILE_PATH = Path("./config/config.ini")
         self.SAVED_DATA_EXTENSION = ".csv"  # .json, .pkl.xz, .csv
         self.LLM_DATA_FILENAME = "llm_data" + self.SAVED_DATA_EXTENSION
@@ -47,6 +48,7 @@ class Config:
         """Create directories if they don't exist."""
         directories = [
             self.DATA_DIR_PATH,
+            self.PLOTS_DIR_PATH,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)

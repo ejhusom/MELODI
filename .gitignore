@@ -24,6 +24,7 @@ output.json
 *.x
 
 # images
+plots
 #*.png
 #*.jpg
 #*.jpeg
