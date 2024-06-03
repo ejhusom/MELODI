@@ -423,16 +423,10 @@ class Dataset():
             if shade_by_model_name_only:
                 position_adjustment = 0.1
             else:
-                position_adjustment = 0.05
-
-            # text_length = len(model)
-            # offset = text_length * 0.0001
-            # # ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment, model, ha='center', va='center', fontsize=10, color='black')
-            # ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment - offset, model, ha="center", va='center', fontsize=10, color='black')
+                position_adjustment = 0.08
 
             va = 'bottom' if i % 2 == 0 else 'top'  # Vertical alignment
             ax.text((start + end) / 2, ax.get_ylim()[0] - ax.get_ylim()[1] * position_adjustment, model, ha="center", va=va, fontsize=10, color='black')
-
 
         # Add legend to plot explaining which hatch corresponds to which hardware setup
         handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
@@ -477,6 +471,16 @@ class Dataset():
         plt.savefig(config.PLOTS_DIR_PATH / f"{plot_filename}.pdf", bbox_inches='tight')
         plt.show()
 
+def generate_promptset_colors(datasets_dict):
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    # Extract promptset from dataset names
+    promptsets = set([dataset["promptset"] for dataset in datasets.values()])
+    # Make a dict matching promptset to color
+    promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
+    # Extract model names from dataset names
+
+    return promptset_colors
+
 if __name__ == '__main__':
 
     datasets_path = config.DATA_DIR_PATH / "main_results"
@@ -500,10 +504,12 @@ if __name__ == '__main__':
             datasets[filename]["model_name_and_size"] = filename.split("_")[1] + "_" + filename.split("_")[2]
             datasets[filename]["hardware"] = filename.split("_")[3].split(".")[0]
 
-    # Extract promptset from dataset names
-    promptsets = set([dataset["promptset"] for dataset in datasets.values()])
-    # Make a dict matching promptset to color
-    promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
+    # # Extract promptset from dataset names
+    # promptsets = set([dataset["promptset"] for dataset in datasets.values()])
+    # # Make a dict matching promptset to color
+    # promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
+    promptset_colors = generate_promptset_colors(datasets)
+
     # Extract model names from dataset names
     model_names = set([dataset["model_name"] for dataset in datasets.values()])
     # Extract hardware from dataset names
@@ -535,6 +541,15 @@ if __name__ == '__main__':
 
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
+
+    models_to_include = [
+            "codellama-70b",
+            "llama3-8b",
+            "llama3-70b"
+    ]
+
+    # Filter out models not in models_to_include
+    datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset["model_name"] in models_to_include}
 
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
