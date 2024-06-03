@@ -504,10 +504,6 @@ if __name__ == '__main__':
             datasets[filename]["model_name_and_size"] = filename.split("_")[1] + "_" + filename.split("_")[2]
             datasets[filename]["hardware"] = filename.split("_")[3].split(".")[0]
 
-    # # Extract promptset from dataset names
-    # promptsets = set([dataset["promptset"] for dataset in datasets.values()])
-    # # Make a dict matching promptset to color
-    # promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
     promptset_colors = generate_promptset_colors(datasets)
 
     # Extract model names from dataset names
@@ -539,8 +535,8 @@ if __name__ == '__main__':
 
     # Dataset.compare_energy_per_token(datasets)
 
-    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
-    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
+    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
+    # Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
 
     models_to_include = [
             "codellama-70b",
@@ -550,6 +546,7 @@ if __name__ == '__main__':
 
     # Filter out models not in models_to_include
     datasets = {dataset_name: dataset for dataset_name, dataset in datasets.items() if dataset["model_name"] in models_to_include}
+    breakpoint()
 
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
