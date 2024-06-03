@@ -276,14 +276,81 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None):
+    def boxplot_comparison_subplots(datasets_dict, column="energy_consumption_llm", subplot_dimension="model_name", promptset_colors=None, filter_model_size=True):
 
         # Remove datasets with over 50b in model size
-        datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
+        if filter_model_size:
+            datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
+
+        if subplot_dimension == "promptset":
+            category_set = set([dataset["dataset"].name.split("_")[0] for dataset in datasets_dict.values()])
+        elif subplot_dimension == "model_name_and_size":
+            category_set = set([dataset["dataset"].name.split("_")[1] + "_" + dataset["dataset"].name.split("_")[2] for dataset in datasets_dict.values()])
+        elif subplot_dimension == "model_size":
+            category_set = set([dataset["dataset"].name.split("_")[2] for dataset in datasets_dict.values()])
+        elif subplot_dimension == "hardware":
+            category_set = set([dataset["dataset"].name.split("_")[3].split(".")[0] for dataset in datasets_dict.values()])
+        else: # model_name
+            category_set = set([dataset["dataset"].name.split("_")[1] for dataset in datasets_dict.values()])
+
+        # Sort category_set
+        category_set = sorted(category_set)
+
+        fig, ax = plt.subplots(1, len(category_set), figsize=(2.6*len(category_set), 4.5))
+
+        for i, category in enumerate(category_set):
+            datasets = [dataset["dataset"] for dataset in datasets_dict.values() if category in dataset["dataset"].name]
+            dataset_colors = [dataset["color"] for dataset in datasets_dict.values() if category in dataset["dataset"].name]
+
+            # Prepare the data for box plot
+            data = [dataset.df[column] for dataset in datasets]
+            dataset_names = [dataset.name for dataset in datasets]
+
+            # Remove unnecessary parts of dataset names
+            new_dataset_names = []
+            for dataset_name in dataset_names:
+                # Promptset is represented by color, so can be removed
+                dataset_name = "_".join(dataset_name.split("_")[1:])
+                # Remove category from dataset name
+                dataset_name = dataset_name.replace(category, "")
+                # Ensure there are no double underscores
+                dataset_name = dataset_name.replace("__", "_")
+                dataset_name = dataset_name.strip("_")
+                new_dataset_names.append(dataset_name)
+
+            # dataset_names = new_dataset_names
+
+            bp = ax[i].boxplot(data, labels=dataset_names, patch_artist=True, showfliers=False, vert=1, notch=True)
+
+            for j, (dataset, color) in enumerate(zip(datasets, dataset_colors)): 
+                plt.setp(bp['boxes'][j], color=color)
+                plt.setp(bp['medians'][j], color="red")
+
+            # Add labels and title
+            if i == 0:
+                ax[i].set_ylabel(column)
+            ax[i].set_xlabel(category)
+            ax[i].set_xticklabels(new_dataset_names, rotation=45, ha='right')
+
+        # Add legend to plot explaining which color corresponds to which promptset
+        if promptset_colors:
+            handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
+            plt.legend(handles=handles, loc='upper left', bbox_to_anchor=(1, 1))
+
+        plt.tight_layout()
+        plt.savefig(config.PLOTS_DIR_PATH / f"boxplot_comparison_subplots_{column}_{subplot_dimension}.pdf", bbox_inches='tight')
+        plt.show()
+
+
+    @staticmethod
+    def boxplot_comparison(datasets_dict, column="energy_consumption_llm", promptset_colors=None, filter_model_size=True):
+
+        # Remove datasets with over 50b in model size
+        if filter_model_size:
+            datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
 
         datasets = [dataset["dataset"] for dataset in datasets_dict.values()]
 
-        # column = "energy_per_token"
         # Prepare the data for box plot
         data = [dataset.df[column] for dataset in datasets]
         dataset_names = [dataset.name for dataset in datasets]
@@ -295,6 +362,7 @@ class Dataset():
             new_dataset_names.append(dataset_name)
         
         dataset_names = new_dataset_names
+        breakpoint()
 
         # Plot the box plot
         fig, ax = plt.subplots(figsize=(5,6))
@@ -338,6 +406,7 @@ if __name__ == '__main__':
             # datasets[filename]["model_size"] = int(filename.split("_")[2])[:-1])
             datasets[filename]["model_size"] = filename.split("_")[2]
             datasets[filename]["model_name"] = filename.split("_")[1]
+            datasets[filename]["model_name_and_size"] = filename.split("_")[1] + "_" + filename.split("_")[2]
             datasets[filename]["hardware"] = filename.split("_")[3].split(".")[0]
 
     # Extract promptset from dataset names
@@ -352,7 +421,13 @@ if __name__ == '__main__':
     for dataset_name, dataset in datasets.items():
         dataset["color"] = promptset_colors[dataset["promptset"]]
 
-    datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
+    # breakpoint()
+    # datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
+    sorted_keys = sorted(
+        datasets.keys(),
+        key=lambda x: (x.split('_')[1], int(x.split('_')[2][:-1]))
+    )
+    datasets = {key: datasets[key] for key in sorted_keys}
 
     # Combine the dfs into one
     df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
@@ -369,5 +444,22 @@ if __name__ == '__main__':
 
     # Dataset.compare_energy_per_token(datasets)
 
-    # Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors)
-    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors)
+    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
+    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
+
+    # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
+    #                                     subplot_dimension="model_name_and_size",
+    #                                     promptset_colors=promptset_colors,
+    #                                     filter_model_size=False)
+    # Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
+    #                                     subplot_dimension="model_name_and_size",
+    #                                     promptset_colors=promptset_colors,
+    #                                     filter_model_size=False)
+    # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
+    #                                     subplot_dimension="hardware",
+    #                                     promptset_colors=promptset_colors,
+    #                                     filter_model_size=False)
+    # Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
+    #                                     subplot_dimension="hardware",
+    #                                     promptset_colors=promptset_colors,
+    #                                     filter_model_size=False)

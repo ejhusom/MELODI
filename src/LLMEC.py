@@ -241,6 +241,8 @@ class LLMEC():
             # if plot_power_usage:
             #     plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
+            # print(metrics_per_process)
+            # breakpoint()
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
