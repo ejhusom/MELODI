@@ -362,7 +362,6 @@ class Dataset():
             new_dataset_names.append(dataset_name)
         
         dataset_names = new_dataset_names
-        breakpoint()
 
         # Plot the box plot
         fig, ax = plt.subplots(figsize=(5,6))
@@ -421,8 +420,6 @@ if __name__ == '__main__':
     for dataset_name, dataset in datasets.items():
         dataset["color"] = promptset_colors[dataset["promptset"]]
 
-    # breakpoint()
-    # datasets = dict(sorted(datasets.items(), key=lambda x: (int(x[1]["dataset"].name.split("_")[2][:-1]), x[1]["dataset"].name.split("_")[1])))
     sorted_keys = sorted(
         datasets.keys(),
         key=lambda x: (x.split('_')[1], int(x.split('_')[2][:-1]))
@@ -444,8 +441,8 @@ if __name__ == '__main__':
 
     # Dataset.compare_energy_per_token(datasets)
 
-    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False)
-    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False)
+    Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=True)
+    Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=True)
 
     # Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
     #                                     subplot_dimension="model_name_and_size",
