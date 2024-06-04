@@ -764,15 +764,17 @@ def make_forecasting_result_plot():
 
     df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
     # Two columns: dataset,R2.
-    # Make a bar plot of the R2 values for each dataset.
-    plt.figure(figsize=(8, 6))
-    sns.barplot(x="R2", y="dataset", data=df, palette="viridis")
-    plt.xlabel("R2")
-    plt.ylabel("Dataset")
-    plt.title("Forecasting Results")
+    # Make a bar plot of the R2 values for each dataset. There is one outlier, which will skew the plot if included. Find a way to fix this.
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.barplot(x="dataset", y="R2", data=df, ax=ax)
+    ax.set_title("Forecasting Results")
+    ax.set_xlabel("Dataset")
+    ax.set_ylabel("R2")
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
     plt.show()
+
 
 def generate_expanded_statistics(datasets):
 
