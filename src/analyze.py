@@ -10,7 +10,9 @@ Created:
 
 """
 import os
+
 import matplotlib as mpl
+
 mpl.rcParams['axes.formatter.useoffset'] = False
 
 import matplotlib.pyplot as plt
@@ -19,6 +21,7 @@ import pandas as pd
 import seaborn as sns
 
 from config import config
+
 
 class Dataset():
 
@@ -109,6 +112,52 @@ class Dataset():
         # Print statistics. The energy consumption must be in scientific format with 2 decimals
         print(f"& {promptset} & {model_name} & {model_size} & {hardware} & {number_of_prompts} & {mean_energy_consumption:.2e} & {mean_response_length:.2f} \\\\")
 
+    def display_expanded_statistics(self):
+        """Print statistics for the dataset."""
+
+        # Extract model name and size from dataset name
+        promptset = self.name.split("_")[0]
+        model_name = self.name.split("_")[1]
+        model_size = self.name.split("_")[2]
+        hardware = self.name.split("_")[3].split(".")[0]
+
+        # Extract statistics, where each column is a statistic and each row is a relevant column
+        statistics = self.statistics
+
+        relevant_columns = [
+                "energy_consumption_llm",
+                "energy_per_token",
+                "response_token_length",
+                # "total_duration",
+                # "prompt_token_length"
+        ]
+
+        relevant_statistics = [
+                "count",
+                "mean",
+                "std_dev",
+                # "min",
+                # "25%",
+                "50%",
+                # "75%",
+                # "max",
+                # "range",
+                "median",
+                "iqr",
+        ]
+
+        # Print statistics for each relevant column, values is printed in scientific format with 2 decimals
+        for col in relevant_columns:
+            print(f"Statistics for column: {col}")
+            for stat in relevant_statistics:
+                if stat in statistics.columns:
+                    value = statistics.loc[col, stat]
+                    if stat == "mean" or stat == "std_dev" or stat == "range":
+                        print(f"{stat}: {value:.2e}")
+                    else:
+                        print(f"{stat}: {value}")
+
+        # Print statistics. The energy consumption must be in scientific format with 2 decimals
 
     def plot_distribution(self, include_density_plots=False):
         # Plot distribution of relevant columns
@@ -312,7 +361,7 @@ class Dataset():
         # Sort category_set
         category_set = sorted(category_set)
 
-        fig, ax = plt.subplots(1, len(category_set), figsize=(2.6*len(category_set), 4.5))
+        fig, ax = plt.subplots(1, len(category_set), figsize=(2.0*len(category_set), 4.0))
 
         for i, category in enumerate(category_set):
             datasets = [dataset["dataset"] for dataset in datasets_dict.values() if category in dataset["dataset"].name]
@@ -351,7 +400,11 @@ class Dataset():
         # Add legend to plot explaining which color corresponds to which promptset
         if promptset_colors:
             handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
-            plt.legend(handles=handles, loc='upper left', bbox_to_anchor=(1, 1))
+            bb = (fig.subplotpars.left, fig.subplotpars.top+0.02)
+                  # fig.subplotpars.right*0.4-fig.subplotpars.,.05)
+
+            ax[0].legend(handles=handles, bbox_to_anchor=bb, mode="expand", loc="lower left", title="Prompt dataset",
+                           ncol=2, borderaxespad=0., bbox_transform=fig.transFigure, framealpha=0, edgecolor="white")
 
         plt.tight_layout()
         plt.savefig(config.PLOTS_DIR_PATH / f"boxplot_comparison_subplots_{column}_{subplot_dimension}.pdf", bbox_inches='tight')
@@ -394,15 +447,6 @@ class Dataset():
         
         dataset_names = new_dataset_names
 
-        # hardware_setups = set([dataset["dataset"].name.split("_")[3].split(".")[0] for dataset in datasets_dict.values()])
-
-        # # Make different hatch patters for different hardware setups, up to 10 different patterns
-        # density = 3
-        # hatches = ["|", "-", "x", "\\", "o", "O", ".", "/", "*", "+"]
-        # hatches = [hatch * density for hatch in hatches]
-        # # Match different hatches to hardware setups
-        # hardware_hatches = {hardware: hatch for hardware, hatch in zip(hardware_setups, hatches)}
-
         if filter_model_size:
             if showlegend:
                 figsize = (5.1, 4.5)
@@ -435,10 +479,6 @@ class Dataset():
             patch.set_edgecolor(fc)
             patch.set_facecolor('white')
 
-        # Adjust hatch linewidth for each box
-        # for patch in bp['boxes']:
-        #     patch.set_linewidth(0.5)  # Adjust the linewidth as needed
-
         # Add legend to plot explaining which hatch corresponds to which hardware setup
         handles = [mpl.patches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=hardware) for hardware, hatch in hardware_hatches.items()]
         legend_title = "Hardware setup"
@@ -447,7 +487,6 @@ class Dataset():
         if shade_by_model_name_only:
             model_names = sorted(set([name.split("_")[0] for name in dataset_names]))
         else:
-            # model_names = sorted(set([name for name in dataset_names]))
             # Sort model names ([modelname]_[size]b) alphabetically by the model name and the numerically by the size
             model_names = sorted(
                 set([name for name in dataset_names]),
@@ -506,11 +545,6 @@ class Dataset():
 
         # Add labels and title
         ax.set_ylabel(column + " (kWh)")
-        # ax.set_xlabel('Datasets')
-        # if shade_by_model_name_only:
-        #     ax.xaxis.set_label_coords(0.5, -0.15)  # Adjust the position of xlabel
-        # else:
-        #     ax.xaxis.set_label_coords(0.5, -0.08)  # Adjust the position of xlabel
 
         plt.tight_layout()
 
@@ -529,8 +563,7 @@ def analyze_per_promptset(datasets_dict):
     - Mean energy consumption per prompt in each promptset
     - Mean response length in each promptset
 
-    Print out the results in this latex table format:
-
+    Prints out the results in this latex table format:
     Prompt dataset & Avg. energy cons. (kWh) & Avg. response token length \\
 
     """
@@ -555,9 +588,7 @@ def analyze_per_model(datasets_dict):
     - Mean energy consumption per prompt in each model
     - Mean response length in each model
 
-    It is important to distinguish between different models, as they may have different sizes.
-
-    Print out the results in this latex table format:
+    Prints out the results in this latex table format:
 
     Model & Avg. energy cons. (kWh) & Avg. response token length \\
 
@@ -702,10 +733,19 @@ def generate_subplots(datasets, promptset_colors, hardware_hatches):
                                         promptset_colors=promptset_colors,
                                         filter_model_size=False)
 
+def generate_expanded_statistics(datasets):
+
+    # Iterate through the datasets and print number of samples in each, mean energy consumption, etc.
+    print("Statistics for each dataset:")
+    for dataset_name, dataset in datasets.items():
+        print(f"Dataset: {dataset_name}")
+        dataset["dataset"].display_expanded_statistics()
+        print("\n")
+
 if __name__ == '__main__':
 
     datasets, promptset_colors, hardware_hatches = preprocess_datasets()
-    generate_statistics(datasets)
-    generate_plots(datasets, promptset_colors, hardware_hatches)
+    # generate_statistics(datasets)
+    # generate_plots(datasets, promptset_colors, hardware_hatches)
     generate_subplots(datasets, promptset_colors, hardware_hatches)
-
+    # generate_expanded_statistics(datasets)
