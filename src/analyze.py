@@ -264,7 +264,7 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def plot_single_correlations(df):
+    def plot_single_correlations(df, num_corr=25):
         # Calculate correlations with "energy_consumption_llm"
         correlations = df.corrwith(df["energy_consumption_llm"], numeric_only=True).sort_values(ascending=False)
 
@@ -277,13 +277,37 @@ class Dataset():
             "energy_consumption_monitoring",
             "energy_per_token",
             "Unnamed: 0",
+            "Unnamed: 0.1",
+            "index"
         ]
 
         for col in drop_columns:
             correlations.drop(col, inplace=True)
 
-        # Only include the top 10 correlations
-        correlations = correlations.head(10)
+
+        # Only include the top num_corr correlations
+        correlations = correlations.head(num_corr)
+
+        # Split DataFrame into two parts
+        df = pd.DataFrame(correlations)
+        mid_index = len(df) // 2 + len(df) % 2
+        df1 = df.iloc[:mid_index]
+        df2 = df.iloc[mid_index:]
+        # Move the index to a column and c  reate a numeric index for the two parts
+        df1.reset_index(inplace=True)
+        df2.reset_index(inplace=True)
+
+        # Concatenate df1 and df2 into a single DataFrame, with df1 on the left and df2 on the right
+        df = pd.concat([df1, df2], axis=1)
+        df.columns = ["Feature", "Correlation", "Feature", "Correlation"]
+
+        # Make a latex table and save to variable
+        latex_table = df.to_latex(index=False)
+        # Ensure that every underscore is escaped
+        latex_table = latex_table.replace("_", "\_")
+        # Print the latex table
+        print(latex_table)
+
 
         # Create a bar plot for visualizing correlations
         plt.figure(figsize=(6, 4))
@@ -361,7 +385,12 @@ class Dataset():
         # Sort category_set
         category_set = sorted(category_set)
 
-        fig, ax = plt.subplots(1, len(category_set), figsize=(2.0*len(category_set), 4.0))
+        # Ensure that the subplots needing less space are narrower
+        # Loop through the category set and count the number of box needed in each box plot
+        n_boxes = [len([dataset for dataset in datasets_dict.values() if category in dataset["dataset"].name]) for category in category_set]
+
+        # fig, ax = plt.subplots(1, len(category_set), figsize=(2.0*len(category_set), 3.5))
+        fig, ax = plt.subplots(1, len(category_set), figsize=(sum(n_boxes)/2+0.5, 3.2), gridspec_kw={'width_ratios': n_boxes})
 
         for i, category in enumerate(category_set):
             datasets = [dataset["dataset"] for dataset in datasets_dict.values() if category in dataset["dataset"].name]
@@ -393,18 +422,18 @@ class Dataset():
 
             # Add labels and title
             if i == 0:
-                ax[i].set_ylabel(column + " (kWh)"
+                ax[i].set_ylabel(column + " (kWh)")
             ax[i].set_xlabel(category)
             ax[i].set_xticklabels(new_dataset_names, rotation=45, ha='right')
 
         # Add legend to plot explaining which color corresponds to which promptset
-        if promptset_colors:
-            handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
-            bb = (fig.subplotpars.left, fig.subplotpars.top+0.02)
-                  # fig.subplotpars.right*0.4-fig.subplotpars.,.05)
+        # if promptset_colors:
+        #     handles = [mpl.patches.Patch(color=color, label=promptset) for promptset, color in promptset_colors.items()]
+        #     bb = (fig.subplotpars.left+0.1, fig.subplotpars.top+0.005)
+        #           # fig.subplotpars.right*0.4-fig.subplotpars.,.05)
 
-            ax[0].legend(handles=handles, bbox_to_anchor=bb, mode="expand", loc="lower left", title="Prompt dataset",
-                           ncol=2, borderaxespad=0., bbox_transform=fig.transFigure, framealpha=0, edgecolor="white")
+        #     ax[0].legend(handles=handles, bbox_to_anchor=bb, mode="expand", loc="lower left", title="Prompt dataset",
+        #                    ncol=2, borderaxespad=0., bbox_transform=fig.transFigure, framealpha=0, edgecolor="white")
 
         plt.tight_layout()
         plt.savefig(config.PLOTS_DIR_PATH / f"boxplot_comparison_subplots_{column}_{subplot_dimension}.pdf", bbox_inches='tight')
@@ -674,13 +703,11 @@ def preprocess_datasets():
     # Combine the dfs into one
     df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
     # df.to_csv(config.DATA_DIR_PATH / "all-results" / "combined_results.csv")
-    # Plot correlation for all datasets
-    # Dataset.plot_single_correlations(df)
 
     print("Datasets preprocessed.")
     print("\n")
 
-    return datasets, promptset_colors, hardware_hatches
+    return datasets, promptset_colors, hardware_hatches, df
 
 def generate_statistics(datasets):
 
@@ -733,6 +760,20 @@ def generate_subplots(datasets, promptset_colors, hardware_hatches):
                                         promptset_colors=promptset_colors,
                                         filter_model_size=False)
 
+def make_forecasting_result_plot():
+
+    df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
+    # Two columns: dataset,R2.
+    # Make a bar plot of the R2 values for each dataset.
+    plt.figure(figsize=(8, 6))
+    sns.barplot(x="R2", y="dataset", data=df, palette="viridis")
+    plt.xlabel("R2")
+    plt.ylabel("Dataset")
+    plt.title("Forecasting Results")
+    plt.tight_layout()
+    plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
+    plt.show()
+
 def generate_expanded_statistics(datasets):
 
     # Iterate through the datasets and print number of samples in each, mean energy consumption, etc.
@@ -744,8 +785,10 @@ def generate_expanded_statistics(datasets):
 
 if __name__ == '__main__':
 
-    datasets, promptset_colors, hardware_hatches = preprocess_datasets()
+    datasets, promptset_colors, hardware_hatches, df = preprocess_datasets()
     # generate_statistics(datasets)
     # generate_plots(datasets, promptset_colors, hardware_hatches)
-    generate_subplots(datasets, promptset_colors, hardware_hatches)
+    # generate_subplots(datasets, promptset_colors, hardware_hatches)
     # generate_expanded_statistics(datasets)
+    # Dataset.plot_single_correlations(df, num_corr=25)
+    make_forecasting_result_plot()
