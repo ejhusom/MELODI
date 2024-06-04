@@ -393,7 +393,7 @@ class Dataset():
 
             # Add labels and title
             if i == 0:
-                ax[i].set_ylabel(column)
+                ax[i].set_ylabel(column + " (kWh)"
             ax[i].set_xlabel(category)
             ax[i].set_xticklabels(new_dataset_names, rotation=45, ha='right')
 
