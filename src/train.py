@@ -44,7 +44,7 @@ def plot_true_vs_pred(y_true, y_pred):
 
 
 def simple_models():
-    data = pd.read_csv(config.MAIN_DATASET_PATH)
+    data = pd.read_csv(config.COMPLETE_DATASET_PATH)
     # Preprocess the prompts
     data['processed_prompt'] = data['prompt'].apply(preprocess_text)
 

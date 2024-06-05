@@ -301,8 +301,8 @@ class Dataset():
         df = pd.concat([df1, df2], axis=1)
         df.columns = ["Feature", "Correlation", "Feature", "Correlation"]
 
-        # Make a latex table and save to variable
-        latex_table = df.to_latex(index=False)
+        # Make a latex table and save to variable. Round the correlation values to 2 decimals
+        latex_table = df.to_latex(index=False, float_format="%.3f")
         # Ensure that every underscore is escaped
         latex_table = latex_table.replace("_", "\_")
         # Print the latex table
@@ -436,8 +436,12 @@ class Dataset():
         #                    ncol=2, borderaxespad=0., bbox_transform=fig.transFigure, framealpha=0, edgecolor="white")
 
         plt.tight_layout()
-        plt.savefig(config.PLOTS_DIR_PATH / f"boxplot_comparison_subplots_{column}_{subplot_dimension}.pdf", bbox_inches='tight')
-        plt.show()
+        if filter_model_size:
+            plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}_large_models_removed"
+        else:
+            plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}"
+        plt.savefig(config.PLOTS_DIR_PATH / f"{plot_filename}.pdf", bbox_inches='tight')
+        # plt.show()
 
 
     @staticmethod
@@ -702,7 +706,7 @@ def preprocess_datasets():
 
     # Combine the dfs into one
     df = pd.concat([dataset["dataset"].df for dataset in datasets.values()])
-    # df.to_csv(config.DATA_DIR_PATH / "all-results" / "combined_results.csv")
+    df.to_csv(config.COMPLETE_DATASET_PATH)
 
     print("Datasets preprocessed.")
     print("\n")
@@ -742,74 +746,82 @@ def generate_plots(datasets, promptset_colors, hardware_hatches):
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False, showlegend=False, hardware_hatches=hardware_hatches)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False, showlegend=True, hardware_hatches=hardware_hatches)
 
-def generate_subplots(datasets, promptset_colors, hardware_hatches):
+def generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=False):
     Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
                                         subplot_dimension="model_name_and_size",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=False)
+                                        filter_model_size=filter_model_size)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
                                         subplot_dimension="model_name_and_size",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=False)
+                                        filter_model_size=filter_model_size)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
                                         subplot_dimension="hardware",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=False)
+                                        filter_model_size=filter_model_size)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
                                         subplot_dimension="hardware",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=False)
+                                        filter_model_size=filter_model_size)
 
 def make_forecasting_result_plot():
+    df_prompt = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_prompt.csv", index_col=0)
+    df_response = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv", index_col=0)
 
-    # # Two columns: dataset,R2.
-    # df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
-    # # Make a bar plot of the R2 values for each dataset.
-    # plt.figure(figsize=(8, 6))
-    # sns.barplot(x="R2", y="dataset", data=df, palette="viridis")
-    # # Make a log axis for the r2
-    # plt.xlabel("R2")
-    # plt.ylabel("Dataset")
-    # plt.title("Forecasting Results")
-    # plt.tight_layout()
-    # plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
-    # plt.show()
-    #     # Two columns: dataset, R2.
-    df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
-    # From column "dataset", remove the suffix ".csv"
-    df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
+    dfs = [df_prompt, df_response]
+
+    # Create a figure with two subplots that share the y-axis
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))#, sharey=True)
+
+    for i, df in enumerate(dfs):
+        # Sort the DataFrame by the R2 values
+        df = df.sort_values(by='R2', ascending=False)
+        # From column "dataset", remove the suffix ".csv"
+        df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
+
+        # Make a new column that contains a string, which is the second word in the dataset column (each word is separated by an underscore)
+        df['model'] = df['dataset'].apply(lambda x: x.split("_")[1])
+
+        # Determine the clipping threshold for R2 values
+        clip_value = -1.0
+
+        # Clip the R2 values at the threshold
+        df['R2_clipped'] = df['R2'].apply(lambda x: max(x, clip_value))
     
-    # Determine the clipping threshold for R2 values
-    clip_value = -1.0  # This is an example; set the threshold based on your data analysis
+        # Create the bar plot with clipped R2 values. The bars are colored according to the model name
+        bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis", ax=axs[i])
 
-    # Clip the R2 values at the threshold
-    df['R2_clipped'] = df['R2'].apply(lambda x: max(x, clip_value))
-    
-    # Create a figure
-    plt.figure(figsize=(7,3))
+        # Highlight the clipped bars
+        for bar, r2, r2_clipped in zip(bars.patches, df['R2'], df['R2_clipped']):
+            if r2 < clip_value:
+                bar.set_color((1,0,0,0.3))
+                bar.set_edgecolor('black')
+                plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
+                        f'Clipped ({r2:.2f})', va='center', ha='left', color='black')
 
-    # Create the bar plot with clipped R2 values
-    bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis")
+        # Loop through the bars and change color based on model
+        for j, bar in enumerate(bars.patches):
+            model = df['model'].iloc[j]
+            color = sns.color_palette("viridis", len(df['model'].unique()))[list(df['model'].unique()).index(model)]
+            bar.set_color(color)
 
-    # Highlight the clipped bars
-    for bar, r2, r2_clipped in zip(bars.patches, df['R2'], df['R2_clipped']):
-        if r2 < clip_value:
-            bar.set_color((1,0,0,0.3))
-            bar.set_edgecolor('black')
-            # bar.set_hatch('//')
-            plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
-                     f'Clipped ({r2:.2f})', va='center', ha='left', color='black')
 
-    # Set axis labels and title
-    plt.xlabel("R2")
-    plt.ylabel("Dataset")
-    # plt.title("Forecasting Results")
+        # Set axis labels and title
+        axs[i].set_xlabel("R2 score")
+
+        # Set y-lim to be between -1 and 1
+        axs[i].set_xlim(-1, 1)
+
+    axs[0].set_ylabel("Energy consumption dataset")
+    axs[0].set_title("Forecasting results for prompt")
+    axs[1].set_title("Forecasting results for response")
+    # Add legend for model colors
+    handles = [mpl.patches.Patch(color=sns.color_palette("viridis", len(df['model'].unique()))[j], label=model) for j, model in enumerate(df['model'].unique())]
+    axs[1].legend(handles=handles, title="LLM model type", loc='upper left')
 
     # Adjust layout and save the plot
     plt.tight_layout()
-    plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
-    plt.show()
-
+    plt.savefig(str(config.PLOTS_DIR_PATH / "forecasting_results.pdf"))
 
 
 
@@ -828,6 +840,7 @@ if __name__ == '__main__':
     # generate_statistics(datasets)
     # generate_plots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches)
+    # generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=True)
     # generate_expanded_statistics(datasets)
     # Dataset.plot_single_correlations(df, num_corr=25)
     make_forecasting_result_plot()

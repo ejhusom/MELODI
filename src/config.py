@@ -31,6 +31,8 @@ class Config:
         # PATHS AND FILENAMES
         self.DATA_DIR_PATH = Path("./data/")
         self.PLOTS_DIR_PATH = Path("./plots/")
+        self.MAIN_RESULTS_DIR_PATH = self.DATA_DIR_PATH / "main_results/"
+        self.COMPLETE_RESULTS_DIR_PATH = self.DATA_DIR_PATH / "complete_results/"
         self.CONFIG_FILE_PATH = Path("./config/config.ini")
         self.SAVED_DATA_EXTENSION = ".csv"  # .json, .pkl.xz, .csv
         self.LLM_DATA_FILENAME = "llm_data" + self.SAVED_DATA_EXTENSION
@@ -39,6 +41,7 @@ class Config:
         self.METRICS_MONITORING_FILENAME = "metrics_monitoring" + self.SAVED_DATA_EXTENSION
         self.MAIN_DATASET_PATH = self.DATA_DIR_PATH / "dataset.csv"
         self.MAIN_DATASET_WITH_FEATURES_PATH = self.DATA_DIR_PATH / "dataset_with_features.csv"
+        self.COMPLETE_DATASET_PATH = self.COMPLETE_RESULTS_DIR_PATH / "complete_dataset.csv"
         self.SCAPHANDRE_STREAM_TEMP_FILE = "tmp_scaphandre.json"
         self.NVIDIASMI_STREAM_TEMP_FILE = "tmp_nvidiasmi.csv"
 
@@ -49,6 +52,8 @@ class Config:
         directories = [
             self.DATA_DIR_PATH,
             self.PLOTS_DIR_PATH,
+            self.MAIN_RESULTS_DIR_PATH,
+            self.COMPLETE_RESULTS_DIR_PATH,
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)

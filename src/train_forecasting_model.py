@@ -62,6 +62,7 @@ def preprocess_data(df, target_column, scale_features=False, unique_val_threshol
     df = df.dropna(subset=[target_column])
     y = df[target_column]
     X = df.drop(columns=[target_column])
+
     X = X[[
         'prompt', 
         'type',
@@ -330,14 +331,18 @@ def new_train(df):
 
 # Example usage
 if __name__ == "__main__":
-    df = pd.read_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)  # Replace with your dataset path
+    # df = pd.read_csv(config.MAIN_DATASET_WITH_FEATURES_PATH)  # Replace with your dataset path
     # df = pd.read_csv(config.MAIN_DATASET_PATH)  # Replace with your dataset path
+    df = pd.read_csv(config.COMPLETE_DATASET_PATH)  # Replace with your dataset path
+
+    print("Preprocessing data...")
     X_train, X_test, y_train, y_test = preprocess_data(df, "energy_consumption_llm", scale_features=True)
 
     # Easily switch between models by changing the model name
-    model_names = ["random_forest", "decision_tree", "gradient_boosting", "xgboost", "svm", "linear_regression"]#, "neural_network"]
-    # model_names = ["linear_regression"]
+    # model_names = ["random_forest", "decision_tree", "gradient_boosting", "xgboost", "svm", "linear_regression"]#, "neural_network"]
+    model_names = ["random_forest"]
     for model_name in model_names:
+        print(f"Training and evaluating {model_name}...")
         train_and_evaluate(model_name, X_train, X_test, y_train, y_test)
 
     # new_train(df)
