@@ -762,18 +762,55 @@ def generate_subplots(datasets, promptset_colors, hardware_hatches):
 
 def make_forecasting_result_plot():
 
+    # # Two columns: dataset,R2.
+    # df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
+    # # Make a bar plot of the R2 values for each dataset.
+    # plt.figure(figsize=(8, 6))
+    # sns.barplot(x="R2", y="dataset", data=df, palette="viridis")
+    # # Make a log axis for the r2
+    # plt.xlabel("R2")
+    # plt.ylabel("Dataset")
+    # plt.title("Forecasting Results")
+    # plt.tight_layout()
+    # plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
+    # plt.show()
+    #     # Two columns: dataset, R2.
     df = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results.csv", index_col=0)
-    # Two columns: dataset,R2.
-    # Make a bar plot of the R2 values for each dataset. There is one outlier, which will skew the plot if included. Find a way to fix this.
-    fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(x="dataset", y="R2", data=df, ax=ax)
-    ax.set_title("Forecasting Results")
-    ax.set_xlabel("Dataset")
-    ax.set_ylabel("R2")
-    plt.xticks(rotation=45, ha='right')
+    # From column "dataset", remove the suffix ".csv"
+    df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
+    
+    # Determine the clipping threshold for R2 values
+    clip_value = -1.0  # This is an example; set the threshold based on your data analysis
+
+    # Clip the R2 values at the threshold
+    df['R2_clipped'] = df['R2'].apply(lambda x: max(x, clip_value))
+    
+    # Create a figure
+    plt.figure(figsize=(7,3))
+
+    # Create the bar plot with clipped R2 values
+    bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis")
+
+    # Highlight the clipped bars
+    for bar, r2, r2_clipped in zip(bars.patches, df['R2'], df['R2_clipped']):
+        if r2 < clip_value:
+            bar.set_color((1,0,0,0.3))
+            bar.set_edgecolor('black')
+            # bar.set_hatch('//')
+            plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
+                     f'Clipped ({r2:.2f})', va='center', ha='left', color='black')
+
+    # Set axis labels and title
+    plt.xlabel("R2")
+    plt.ylabel("Dataset")
+    # plt.title("Forecasting Results")
+
+    # Adjust layout and save the plot
     plt.tight_layout()
     plt.savefig(config.PLOTS_DIR_PATH / "forecasting_results.pdf")
     plt.show()
+
+
 
 
 def generate_expanded_statistics(datasets):
