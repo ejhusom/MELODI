@@ -282,8 +282,10 @@ class Dataset():
         ]
 
         for col in drop_columns:
-            correlations.drop(col, inplace=True)
-
+            try:
+                correlations.drop(col, inplace=True)
+            except KeyError:
+                pass
 
         # Only include the top num_corr correlations
         correlations = correlations.head(num_corr)
@@ -645,6 +647,8 @@ def generate_promptset_colors(datasets_dict):
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
     # Extract promptset from dataset names
     promptsets = set([dataset["promptset"] for dataset in datasets_dict.values()])
+    # Sort promptsets to ensure consistent color assignment. Sort them reverse to get the same order as in the colors list
+    promptsets = sorted(promptsets, reverse=True)
     # Make a dict matching promptset to color
     promptset_colors = {promptset: color for promptset, color in zip(promptsets, colors)}
     # Extract model names from dataset names
@@ -764,65 +768,80 @@ def generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model
                                         promptset_colors=promptset_colors,
                                         filter_model_size=filter_model_size)
 
-def make_forecasting_result_plot():
-    df_prompt = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_prompt.csv", index_col=0)
-    df_response = pd.read_csv(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv", index_col=0)
+def make_forecasting_result_plot(filepath):
 
-    dfs = [df_prompt, df_response]
+    df = pd.read_csv(filepath, index_col=0)
+    # From column "dataset", remove the suffix ".csv"
+    df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
 
-    # Create a figure with two subplots that share the y-axis
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))#, sharey=True)
+    # Sort the DataFrame by the R2 values
+    df = df.sort_values(by='R2', ascending=False)
 
-    for i, df in enumerate(dfs):
-        # Sort the DataFrame by the R2 values
-        df = df.sort_values(by='R2', ascending=False)
-        # From column "dataset", remove the suffix ".csv"
-        df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
+    print(df)
 
-        # Make a new column that contains a string, which is the second word in the dataset column (each word is separated by an underscore)
-        df['model'] = df['dataset'].apply(lambda x: x.split("_")[1])
-
-        # Determine the clipping threshold for R2 values
-        clip_value = -1.0
-
-        # Clip the R2 values at the threshold
-        df['R2_clipped'] = df['R2'].apply(lambda x: max(x, clip_value))
+    # Make a new column that contains a string, which is the second word in the dataset column (each word is separated by an underscore)
+    df['model'] = df['dataset'].apply(lambda x: x.split("_")[1])
     
-        # Create the bar plot with clipped R2 values. The bars are colored according to the model name
-        bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis", ax=axs[i])
+    # Determine the clipping threshold for R2 values
+    clip_value = -1.0  # This is an example; set the threshold based on your data analysis
 
-        # Highlight the clipped bars
-        for bar, r2, r2_clipped in zip(bars.patches, df['R2'], df['R2_clipped']):
-            if r2 < clip_value:
-                bar.set_color((1,0,0,0.3))
-                bar.set_edgecolor('black')
-                plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
-                        f'Clipped ({r2:.2f})', va='center', ha='left', color='black')
+    # Clip the R2 values at the threshold
+    df['R2_clipped'] = df['R2'].apply(lambda x: max(x, clip_value))
+    
+    # Create a figure
+    plt.figure(figsize=(7,3))
 
-        # Loop through the bars and change color based on model
-        for j, bar in enumerate(bars.patches):
-            model = df['model'].iloc[j]
-            color = sns.color_palette("viridis", len(df['model'].unique()))[list(df['model'].unique()).index(model)]
-            bar.set_color(color)
+    # Create the bar plot with clipped R2 values. The bars are colored according to the model name
+    bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis")
+    # bars = sns.barplot(x="R2_clipped", y="dataset", data=df, palette="viridis", hue="model")
 
 
-        # Set axis labels and title
-        axs[i].set_xlabel("R2 score")
+    # Highlight the clipped bars
+    for bar, r2, r2_clipped in zip(bars.patches, df['R2'], df['R2_clipped']):
+        if r2 < clip_value:
+            bar.set_color((1,0,0,0.3))
+            bar.set_edgecolor('black')
+            # bar.set_hatch('//')
+            plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height() / 2,
+                     f'Clipped ({r2:.2f})', va='center', ha='left', color='black')
 
-        # Set y-lim to be between -1 and 1
-        axs[i].set_xlim(-1, 1)
+    # Loop through the bars and change color based on model
+    for i, bar in enumerate(bars.patches):
+        model = df['model'].iloc[i]
+        color = sns.color_palette("viridis", len(df['model'].unique()))[list(df['model'].unique()).index(model)]
+        bar.set_color(color)
 
-    axs[0].set_ylabel("Energy consumption dataset")
-    axs[0].set_title("Forecasting results for prompt")
-    axs[1].set_title("Forecasting results for response")
     # Add legend for model colors
-    handles = [mpl.patches.Patch(color=sns.color_palette("viridis", len(df['model'].unique()))[j], label=model) for j, model in enumerate(df['model'].unique())]
-    axs[1].legend(handles=handles, title="LLM model type", loc='upper left')
+    handles = [mpl.patches.Patch(color=sns.color_palette("viridis", len(df['model'].unique()))[i], label=model) for i, model in enumerate(df['model'].unique())]
+    plt.legend(handles=handles, title="LLM model type", loc='upper left')
+
+
+    # Set axis labels and title
+    plt.xlabel("R2 score")
+    plt.ylabel("Energy consumption dataset")
 
     # Adjust layout and save the plot
     plt.tight_layout()
-    plt.savefig(str(config.PLOTS_DIR_PATH / "forecasting_results.pdf"))
+    plt.savefig(str(config.PLOTS_DIR_PATH / filepath.stem) + ".pdf")
+    plt.show()
 
+def print_correlations_for_best_predictive_model(filepath):
+
+    df = pd.read_csv(filepath, index_col=0)
+    # From column "dataset", remove the suffix ".csv"
+    df['dataset'] = df['dataset'].apply(lambda x: x[:-4])
+
+    # Sort the DataFrame by the R2 values
+    df = df.sort_values(by='R2', ascending=False)
+
+    # Get the dataset with the highest R2 value
+    best_dataset = df.iloc[0]['dataset']
+
+    # Load the dataset
+    dataset = Dataset(config.DATA_DIR_PATH / "main_results" / (best_dataset + ".csv"))
+
+    # Perform correlation analysis
+    Dataset.plot_single_correlations(dataset.df, num_corr=30)
 
 
 def generate_expanded_statistics(datasets):
@@ -842,5 +861,7 @@ if __name__ == '__main__':
     # generate_subplots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=True)
     # generate_expanded_statistics(datasets)
-    # Dataset.plot_single_correlations(df, num_corr=25)
-    make_forecasting_result_plot()
+    # Dataset.plot_single_correlations(df, num_corr=30)
+    make_forecasting_result_plot(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_prompt.csv")
+    # make_forecasting_result_plot(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv")
+    # print_correlations_for_best_predictive_model(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv")
