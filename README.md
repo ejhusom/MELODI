@@ -9,6 +9,7 @@ Use local Large Language Models (LLMs) while monitoring energy usage. This proje
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Contributing](#contributing)
+- [Data](#data)
 - [License](#license)
 - [Contact Information](#contact-information)
 
@@ -98,6 +99,11 @@ llm_api_url = http://localhost:11434/api/chat
 model_name = mistral
 verbosity = 1
 ```
+
+## Data
+
+We have produced a dataset of energy consumption measurements for a diverse set of open-source LLMs.
+This dataset is available at Hugging Face Datasets: [LLM Energy Consumption Dataset](https://huggingface.co/datasets/ejhusom/llm-inference-energy-consumption).
 
 ## Contributing
 
