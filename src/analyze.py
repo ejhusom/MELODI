@@ -856,12 +856,13 @@ def generate_expanded_statistics(datasets):
 if __name__ == '__main__':
 
     datasets, promptset_colors, hardware_hatches, df = preprocess_datasets()
-    # generate_statistics(datasets)
+    generate_statistics(datasets)
     # generate_plots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=True)
     # generate_expanded_statistics(datasets)
-    Dataset.plot_single_correlations(df, num_corr=20)
+    # Dataset.plot_single_correlations(df, num_corr=20)
+
     # make_forecasting_result_plot(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_prompt.csv")
     # make_forecasting_result_plot(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv")
     # print_correlations_for_best_predictive_model(config.DATA_DIR_PATH / "forecasting_results/forecasting_results_response.csv")

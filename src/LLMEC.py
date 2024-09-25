@@ -633,7 +633,7 @@ def calculate_energy_consumption_from_power_measurements(
                 # energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
                 # print(f"kWh (time intervals): {energy_consumption_kwh}")
 
-                energy_consumption_joules = np.trapz(df["consumption"], df.index)
+                energy_consumption_joules = np.trapezoid(df["consumption"], df.index)
                 energy_consumption_kwh = energy_consumption_joules / (10**3 * 3600)
                 print(f"kWh (trapz)         : {energy_consumption_kwh}")
 
