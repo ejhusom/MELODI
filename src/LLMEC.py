@@ -182,11 +182,12 @@ class LLMEC():
             num_attempts = 5
             timeout = 3
 
+
             # Try reading the data for num_attempts times
             for i in range(num_attempts):
                 try:
                     # Read nvidia-smi data, and skipping last row, since it sometimes is incomplete.
-                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE)[:-1]
+                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE, on_bad_lines="skip")[:-1]
                     break  # Exit the loop if the read is successful
                 except pd.errors.EmptyDataError:
                     if i < num_attempts - 1:
@@ -202,14 +203,18 @@ class LLMEC():
             if failed_reading_data:
                 continue
 
+            # nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
             try:
                 nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
             except:
+                print("Failed postprocessing nvidiasmi data")
                 continue
 
 
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
+
+            print(metrics_per_process)
 
             print("==============================")
             a = datetime.datetime.fromtimestamp(
@@ -299,7 +304,10 @@ class LLMEC():
         df = df.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
         # Drop nan rows
         df = df.dropna()
-        df['datetime'] = pd.to_datetime(df['datetime'])
+        # Convert timestamp to datetime. Errors='coerce' will set NaT for invalid values.
+        df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+        # Drop rows where 'date_column' is NaT
+        df = df.dropna(subset=['datetime'])
         # Sort values
         df = df.sort_values('datetime')
         # Detect the local time zone and convert the nvidia-smi timestamps to UTC
