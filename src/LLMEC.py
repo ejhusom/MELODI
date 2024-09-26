@@ -148,8 +148,8 @@ class LLMEC():
 
             csv_handler = CSVHandler(config.PYJOULES_TEMP_FILE)
 
-            @track_emissions(experiment_id=p)
             @measure_energy(handler=csv_handler)
+            @track_emissions(experiment_id=p)
             def run_inference():
                 data = llm_client.call_api(prompt=p, stream=stream)
                 return data
@@ -214,14 +214,16 @@ class LLMEC():
                         break
 
             if failed_reading_data:
+                data_df = None
                 continue
 
-            nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
-            # try:
-            #     nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
-            # except:
-            #     print("Failed postprocessing nvidiasmi data")
-            #     continue
+            # nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            try:
+                nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            except:
+                print("Failed postprocessing nvidiasmi data")
+                data_df = None
+                continue
 
             # Read and postprocess PyJoules data, from a csv with ";" as separator
             # The columns are: timestamp, tag, duration, package_0, dram_0, core_0, uncore_0, and nvidia_gpu_0. Additional columns may exists depending on the hardware. The timestamp column has a UNIX timestamp, and should be converted to datetime. The columns wtih "gpu" in the name should be summed to get the total GPU power draw. The rest of the columns with energy measurements (package_*, dram_*, core_*, uncore_*) should be summed to get the total CPU power draw. The final df should consist of three columns: timestamp, duration, cpu_consumption, and gpu_consumption.

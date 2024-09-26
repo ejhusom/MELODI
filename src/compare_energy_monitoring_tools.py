@@ -22,6 +22,9 @@ df = df.rename(columns={
     "energy_consumed": "energy_consumed_codecarbon"
 })
 
+# Add ram_energy_codecarbon to the cpu_energy_codecarbon to get the total energy consumed by the system.
+df["energy_consumed_cpu + ram_codecarbon"] = df["cpu_energy_codecarbon"] + df["ram_energy_codecarbon"]
+
 # Save the resulting dataframe to "data/dataset_all_monitoring_tools.csv".
 df.to_csv("data/dataset_all_monitoring_tools.csv", index=False)
 
@@ -33,19 +36,19 @@ df.to_csv("data/dataset_all_monitoring_tools.csv", index=False)
 # plt.show()
 
 # Boxplot comparing the total energy consumption measured by scaphandre, pyjoules and codecarbon for the various devices.
-fig, axs = plt.subplots(3, 1, figsize=(7, 7))
+fig, axs = plt.subplots(3, 1, figsize=(4, 7))
 df.boxplot(column=["energy_consumption_llm_cpu_scaphandre", "energy_consumption_llm_cpu_pyjoules", "cpu_energy_codecarbon"], ax=axs[0])
-axs[0].set_title('CPU Energy Consumption')
+axs[0].set_title('CPU+RAM Energy Consumption')
 axs[0].set_ylabel('Energy (kWh)')
-axs[0].set_xticklabels(["Scaphandre", "PyJoules", "CodeCarbon"])
+axs[0].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon"])
 df.boxplot(column=["energy_consumption_llm_gpu_scaphandre", "energy_consumption_llm_gpu_pyjoules", "gpu_energy_codecarbon"], ax=axs[1])
 axs[1].set_title('GPU Energy Consumption')
 axs[1].set_ylabel('Energy (kWh)')
-axs[1].set_xticklabels(["Scaphandre", "PyJoules", "CodeCarbon"])
+axs[1].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon"])
 df.boxplot(column=["energy_consumption_llm_total_scaphandre", "energy_consumption_llm_total_pyjoules", "energy_consumed_codecarbon"], ax=axs[2])
 axs[2].set_title('Total Energy Consumption')
 axs[2].set_ylabel('Energy (kWh)')
-axs[2].set_xticklabels(["Scaphandre", "PyJoules", "CodeCarbon"])
+axs[2].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon"])
 plt.tight_layout()
 plt.savefig("energy_consumption_comparison.png")
 plt.show()
