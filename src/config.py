@@ -44,6 +44,7 @@ class Config:
         self.COMPLETE_DATASET_PATH = self.COMPLETE_RESULTS_DIR_PATH / "complete_dataset.csv"
         self.SCAPHANDRE_STREAM_TEMP_FILE = "tmp_scaphandre.json"
         self.NVIDIASMI_STREAM_TEMP_FILE = "tmp_nvidiasmi.csv"
+        self.PYJOULES_TEMP_FILE = "tmp_pyjoules.csv"
 
         self._init_paths()
 

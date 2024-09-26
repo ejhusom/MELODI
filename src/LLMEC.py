@@ -24,6 +24,9 @@ import pandas as pd
 import pytz
 import tzlocal
 from _csv import Error as CSVErr
+from pyJoules.energy_meter import measure_energy
+from pyJoules.handler.csv_handler import CSVHandler
+from codecarbon import track_emissions
 
 from config import config
 from LLMAPIClient import LLMAPIClient
@@ -143,10 +146,20 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Calling LLM service...")
 
+            csv_handler = CSVHandler(config.PYJOULES_TEMP_FILE)
+
+            @track_emissions(experiment_id=p)
+            @measure_energy(handler=csv_handler)
+            def run_inference():
+                data = llm_client.call_api(prompt=p, stream=stream)
+                return data
+
             # Perform inference with LLM
             start_time = datetime.datetime.now(tz=pytz.utc)
-            data = llm_client.call_api(prompt=p, stream=stream)
+            data = run_inference()
             end_time = datetime.datetime.now(tz=pytz.utc)
+        
+            csv_handler.save_data()
 
             if not data:
                 print("Failed to get a response.")
@@ -203,18 +216,41 @@ class LLMEC():
             if failed_reading_data:
                 continue
 
-            # nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
-            try:
-                nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
-            except:
-                print("Failed postprocessing nvidiasmi data")
-                continue
+            nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            # try:
+            #     nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            # except:
+            #     print("Failed postprocessing nvidiasmi data")
+            #     continue
 
+            # Read and postprocess PyJoules data, from a csv with ";" as separator
+            # The columns are: timestamp, tag, duration, package_0, dram_0, core_0, uncore_0, and nvidia_gpu_0. Additional columns may exists depending on the hardware. The timestamp column has a UNIX timestamp, and should be converted to datetime. The columns wtih "gpu" in the name should be summed to get the total GPU power draw. The rest of the columns with energy measurements (package_*, dram_*, core_*, uncore_*) should be summed to get the total CPU power draw. The final df should consist of three columns: timestamp, duration, cpu_consumption, and gpu_consumption.
+            try:
+                pyjoules_data = pd.read_csv(config.PYJOULES_TEMP_FILE, sep=";")
+                pyjoules_data["timestamp"] = pd.to_datetime(pyjoules_data["timestamp"], unit="s", utc=True)
+                # Sum CPU consumption over all package/core/dram/uncore columns
+                cpu_columns = [col for col in pyjoules_data.columns if "package" in col or "dram" in col or "core" in col or "uncore" in col]
+                pyjoules_data["consumption"] = pyjoules_data[cpu_columns].sum(axis=1)
+                # Sum GPU consumption over all gpu columns
+                gpu_columns = [col for col in pyjoules_data.columns if "nvidia_gpu" in col]
+                pyjoules_data["gpu_consumption"] = pyjoules_data[gpu_columns].sum(axis=1)
+                # Drop the individual columns
+                pyjoules_data = pyjoules_data[["timestamp", "duration", "consumption", "gpu_consumption"]]
+                # Add column with total consumption
+                pyjoules_data["total_consumption"] = pyjoules_data["consumption"] + pyjoules_data["gpu_consumption"]
+
+                # The measurements are in microJoules, convert them to kWh
+                pyjoules_data["consumption"] /= 3.6e12
+                pyjoules_data["gpu_consumption"] /= 3.6e12
+                pyjoules_data["total_consumption"] /= 3.6e12
+            except:
+                print("Failed reading PyJoules data.")
+                continue
 
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
 
-            print(metrics_per_process)
+            # print(metrics_per_process)
 
             print("==============================")
             a = datetime.datetime.fromtimestamp(
@@ -271,6 +307,10 @@ class LLMEC():
                     data_df["energy_consumption_llm_gpu"]
             )
 
+            data_df["energy_consumption_llm_cpu_pyjoules"] = pyjoules_data["consumption"].sum()
+            data_df["energy_consumption_llm_gpu_pyjoules"] = pyjoules_data["gpu_consumption"].sum()
+            data_df["energy_consumption_llm_total_pyjoules"] = pyjoules_data["total_consumption"].sum()
+
             if save_power_data:
                 if self.verbosity > 0:
                     print("Saving data...")
@@ -316,7 +356,10 @@ class LLMEC():
         # Create column with unix timestamp
         df["timestamp"] = pd.to_datetime(df["datetime"]).astype(int) / 10**9
         # Convert measurements from string with unit to a float number
-        df["consumption"] = df["consumption"].str.replace(' W', '').astype(float)
+        try:
+            df["consumption"] = df["consumption"].str.replace(r'\s*W', '', regex=True).astype(float)
+        except:
+            breakpoint()
         # Drop rows with negative timestamps (in the index)
         df = df[df.index >= 0]
         # # Drop rows where timestamps does not appear chronologically
@@ -633,9 +676,9 @@ def calculate_energy_consumption_from_power_measurements(
                 # energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
                 # print(f"kWh (time intervals): {energy_consumption_kwh}")
 
-                energy_consumption_joules = np.trapezoid(df["consumption"], df.index)
-                energy_consumption_kwh = energy_consumption_joules / (10**3 * 3600)
-                print(f"kWh (trapz)         : {energy_consumption_kwh}")
+                energy_consumption_joules = np.trapz(df["consumption"], df.index)
+                energy_consumption_kwh = energy_consumption_joules / 3.6e6
+                print(f"kWh (trapz)  : {energy_consumption_kwh} - ({cmdline})")
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
