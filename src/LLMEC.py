@@ -31,11 +31,7 @@ from energy_meter import EnergyMeter
 
 from config import config
 from LLMAPIClient import LLMAPIClient
-
-# from deepeval import assert_test, evaluate
-# from deepeval.metrics import AnswerRelevancyMetric
-# from deepeval.test_case import LLMTestCase
-
+from utils import joules2kwh
 
 class LLMEC():
 
@@ -84,6 +80,8 @@ class LLMEC():
             stream (bool, default=False): Whether to stream the response. Defaults to False.
             save_power_data (bool, default=False): Save power usage data to file.
             plot_power_usage (bool, default=False): Plot power usage.
+            task_type (str, default="unknown"): The type of task the prompt
+                asks for. This can be used to categorize the data.
             TODO: batch_mode (bool, default=False): 
         """
         if llm_service is None:
@@ -289,15 +287,12 @@ class LLMEC():
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     metrics_monitoring = specific_process
 
-            # if plot_power_usage:
-            #     plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
+            if plot_power_usage:
+                plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
-            # print(metrics_per_process)
-            # breakpoint()
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
-                # print(f"Energy consumption for cmdline "{cmdline[:10]}...": {energy_consumption} kWh")
                 if "gpu" in cmdline:
                     data["energy_consumption_llm_gpu"] = energy_consumption
                 if config.LLM_SERVICE_KEYWORD in cmdline:
@@ -357,6 +352,15 @@ class LLMEC():
         return data_df
 
     def postprocess_nvidiasmi_data(self, df):
+        """Postprocess nvidia-smi data.
+
+        Args:
+            df (pd.DataFrame): The data to postprocess.
+
+        Returns:
+            df (pd.DataFrame): The postprocessed data.
+
+        """
 
         # Rename columns
         df = df.rename(columns={"timestamp": "datetime", " power.draw [W]": "consumption"})
@@ -374,14 +378,9 @@ class LLMEC():
         # Create column with unix timestamp
         df["timestamp"] = pd.to_datetime(df["datetime"]).astype(int) / 10**9
         # Convert measurements from string with unit to a float number
-        try:
-            df["consumption"] = df["consumption"].str.replace(r'\s*W', '', regex=True).astype(float)
-        except:
-            breakpoint()
+        df["consumption"] = df["consumption"].str.replace(r'\s*W', '', regex=True).astype(float)
         # Drop rows with negative timestamps (in the index)
         df = df[df.index >= 0]
-        # # Drop rows where timestamps does not appear chronologically
-        # df = df[df['timestamp'].diff().ge(0)]
 
         return df
 
@@ -395,14 +394,6 @@ class LLMEC():
                     data.to_csv(filename)
                 except CSVErr as e:
                     print("Failed to save with escape character. Skipping save:", e)
-                    # try:
-                    #     print("Encountered CSV error:", e)
-                    #     print("Retrying with escape character set...")
-                    #     # If error, retry with escapechar
-                    #     data.to_csv(filename, escapechar="\\")
-                    # except CSVErr as e:
-                    #     # If still an error, skip saving
-                    #     print("Failed to save with escape character. Skipping save:", e)
             elif "json" in os.path.splitext(filename)[-1]:
                 data.to_json(filename)
             else:
@@ -710,9 +701,6 @@ def calculate_energy_consumption_from_power_measurements(
         plot_metrics_truncated(old_dfs, new_dfs)
 
     return energy_consumption_dict
-
-def joules2kwh(data):
-    return data / 3.6e6
 
 def plot_metrics_truncated(old_dfs, new_dfs):
     """Plot metrics for a single prompt-response."""
