@@ -9,6 +9,7 @@ Use local Large Language Models (LLMs) while monitoring energy usage. This proje
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Contributing](#contributing)
+- [Tests](#tests)
 - [Data](#data)
 - [License](#license)
 - [Contact Information](#contact-information)
@@ -104,6 +105,14 @@ verbosity = 1
 
 We have produced a dataset of energy consumption measurements for a diverse set of open-source LLMs.
 This dataset is available at Hugging Face Datasets: [LLM Energy Consumption Dataset](https://huggingface.co/datasets/ejhusom/llm-inference-energy-consumption).
+
+## Tests
+
+Run unit tests with this command from the main directory:
+
+```bash
+pytest
+```
 
 ## Contributing
 
