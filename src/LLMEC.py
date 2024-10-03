@@ -27,6 +27,7 @@ from _csv import Error as CSVErr
 from pyJoules.energy_meter import measure_energy
 from pyJoules.handler.csv_handler import CSVHandler
 from codecarbon import track_emissions
+from energy_meter import EnergyMeter
 
 from config import config
 from LLMAPIClient import LLMAPIClient
@@ -106,6 +107,13 @@ class LLMEC():
         failed_reading_data = False
 
         for p in prompts: 
+            csv_handler = CSVHandler(config.PYJOULES_TEMP_FILE)
+
+            em = EnergyMeter(disk_avg_speed=3000*1e6, # The average speed of your storage (see below how you can get it)
+                  disk_active_power=0.1,    # How many Watts are used when the storage is reading or writing (you can usually find it in specs of your storage)
+                  disk_idle_power=0.03,   # How many Watts are used when the storage is idle (you can usually find it in specs of your storage)
+                  label=p,     # A label to identify the measurement, in this case the prompt
+                  include_idle=False)     # If energy used during idle should be accounted for in the measurement. Defaults to False.
 
             # Start power measurements
             if self.verbosity > 0:
@@ -146,8 +154,6 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Calling LLM service...")
 
-            csv_handler = CSVHandler(config.PYJOULES_TEMP_FILE)
-
             @measure_energy(handler=csv_handler)
             @track_emissions(experiment_id=p)
             def run_inference():
@@ -156,7 +162,9 @@ class LLMEC():
 
             # Perform inference with LLM
             start_time = datetime.datetime.now(tz=pytz.utc)
+            em.begin()
             data = run_inference()
+            em.end()
             end_time = datetime.datetime.now(tz=pytz.utc)
         
             csv_handler.save_data()
@@ -312,6 +320,14 @@ class LLMEC():
             data_df["energy_consumption_llm_cpu_pyjoules"] = pyjoules_data["consumption"].sum()
             data_df["energy_consumption_llm_gpu_pyjoules"] = pyjoules_data["gpu_consumption"].sum()
             data_df["energy_consumption_llm_total_pyjoules"] = pyjoules_data["total_consumption"].sum()
+
+            data_df["energy_consumption_llm_cpu_energymeter"] = em.get_total_joules_cpu()[0] + em.get_total_joules_dram()[0]
+            data_df["energy_consumption_llm_gpu_energymeter"] = em.get_total_joules_gpu()
+            data_df["energy_consumption_llm_total_energymeter"] = data_df["energy_consumption_llm_cpu_energymeter"] + data_df["energy_consumption_llm_gpu_energymeter"]
+
+            data_df["energy_consumption_llm_cpu_energymeter"] = joules2kwh(data_df["energy_consumption_llm_cpu_energymeter"])
+            data_df["energy_consumption_llm_gpu_energymeter"] = joules2kwh(data_df["energy_consumption_llm_gpu_energymeter"])
+            data_df["energy_consumption_llm_total_energymeter"] = joules2kwh(data_df["energy_consumption_llm_total_energymeter"])
 
             if save_power_data:
                 if self.verbosity > 0:
@@ -694,6 +710,9 @@ def calculate_energy_consumption_from_power_measurements(
         plot_metrics_truncated(old_dfs, new_dfs)
 
     return energy_consumption_dict
+
+def joules2kwh(data):
+    return data / 3.6e6
 
 def plot_metrics_truncated(old_dfs, new_dfs):
     """Plot metrics for a single prompt-response."""
