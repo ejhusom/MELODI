@@ -349,6 +349,11 @@ class LLMEC():
                 if self.verbosity > 0:
                     print(f"Data saved with timestamp {timestamp_filename}")
 
+            # Delete temporary files
+            os.remove(config.SCAPHANDRE_STREAM_TEMP_FILE)
+            os.remove(config.NVIDIASMI_STREAM_TEMP_FILE)
+            os.remove(config.PYJOULES_TEMP_FILE)
+
         return data_df
 
     def postprocess_nvidiasmi_data(self, df):

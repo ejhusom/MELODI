@@ -24,8 +24,22 @@ from config import config
 
 
 class Dataset():
+    """Class for handling datasets.
+
+    Attributes:
+        df (pd.DataFrame): The dataset as a pandas DataFrame.
+        name (str): The name of the dataset.
+
+    """
 
     def __init__(self, filename, name="dataset"):
+        """Initialize the Dataset object.
+
+        Args:
+            filename (str): The filename of the dataset.
+            name (str): The name of the dataset.
+
+        """
 
         self.df = pd.read_csv(filename, index_col=0)
         self.name = name
@@ -40,48 +54,52 @@ class Dataset():
         self.df['end_time'] = pd.to_datetime(self.df['end_time'], errors='coerce')
 
         # Ensure other columns are in the correct format
-        numeric_columns = [
-            'total_duration', 'load_duration', 'prompt_token_length',
-            'prompt_duration', 'response_token_length', 'response_duration',
-            'energy_consumption_monitoring', 'energy_consumption_llm_cpu',
-            'energy_consumption_llm_gpu', 'energy_consumption_llm_total',
-            'energy_consumption_llm'
+        self.numeric_columns = [
+            'total_duration', 
+            'load_duration', 
+            'prompt_token_length',
+            'prompt_duration', 
+            'response_token_length', 
+            'response_duration',
+            'energy_per_token'
         ]
 
-        for col in numeric_columns:
+        # Include every column starting with energy_consumption*
+        self.numeric_columns += [col for col in self.df.columns if col.startswith("energy_consumption")]
+
+        for col in self.numeric_columns:
             self.df[col] = pd.to_numeric(self.df[col], errors='coerce')
+
+        # Calculate energy consumption per token
+        # self.df["energy_per_token"] = self.df["energy_consumption_llm"] / self.df["response_token_length"]
+        # Calculate energy consumption per token for all columns starting with energy_consumption, keeping the same suffix
+        for col in [col for col in self.df.columns if col.startswith("energy_consumption")]:
+            self.df[f"{col}_per_token"] = self.df[col] / self.df["response_token_length"]
 
         # Handle any additional necessary preprocessing
         self.df.dropna(inplace=True)  # Drop rows with any NaN values
 
     def calculate_statistics(self):
-        # Calculate descriptive statistics for relevant columns
+        """Calculate statistics for the dataset.
 
-        self.df["energy_per_token"] = self.df["energy_consumption_llm"] / self.df["response_token_length"]
+        Returns:
+            pd.DataFrame: A DataFrame containing the statistics.
 
-        numeric_columns = [
-            'total_duration', 'load_duration', 'prompt_token_length',
-            'prompt_duration', 'response_token_length', 'response_duration',
-            'energy_consumption_monitoring', 'energy_consumption_llm_cpu',
-            'energy_consumption_llm_gpu', 'energy_consumption_llm_total',
-            'energy_consumption_llm', "energy_per_token"
-        ]
-
-
-        statistics = self.df[numeric_columns].describe(percentiles=[.01, .05, .25, .5, .75, .95, .99]).T
-        statistics['median'] = self.df[numeric_columns].median()
+        """
+        statistics = self.df[self.numeric_columns].describe(percentiles=[.01, .05, .25, .5, .75, .95, .99]).T
+        statistics['median'] = self.df[self.numeric_columns].median()
         statistics['range'] = statistics['max'] - statistics['min']
         statistics['iqr'] = statistics['75%'] - statistics['25%']
         statistics['mode'] = self.df[numeric_columns].mode().iloc[0]
-        statistics['skewness'] = self.df[numeric_columns].skew()
-        statistics['kurtosis'] = self.df[numeric_columns].kurtosis()
-        statistics['std_dev'] = self.df[numeric_columns].std()
+        statistics['skewness'] = self.df[self.numeric_columns].skew()
+        statistics['kurtosis'] = self.df[self.numeric_columns].kurtosis()
+        statistics['std_dev'] = self.df[self.numeric_columns].std()
 
         # Outlier detection using IQR method
-        Q1 = self.df[numeric_columns].quantile(0.25)
-        Q3 = self.df[numeric_columns].quantile(0.75)
+        Q1 = self.df[self.numeric_columns].quantile(0.25)
+        Q3 = self.df[self.numeric_columns].quantile(0.75)
         IQR = Q3 - Q1
-        outliers = ((self.df[numeric_columns] < (Q1 - 1.5 * IQR)) | (self.df[numeric_columns] > (Q3 + 1.5 * IQR))).sum()
+        outliers = ((self.df[self.numeric_columns] < (Q1 - 1.5 * IQR)) | (self.df[self.numeric_columns] > (Q3 + 1.5 * IQR))).sum()
 
         statistics['outliers'] = outliers
 
