@@ -60,13 +60,23 @@ To install the required dependencies and set up the project, follow these steps:
 
 ## Usage
 
+### 1. Measure energy consumption during inference
+
+First, ensure that Ollama is running in the background. Some Ollama installations will ensure automatic start-on-boot, but you can also start it manually by running:
+
+```
+ollama serve
+```
+
 To run the script that prompts LLMs and monitors energy consumption, use the following command:
 
 ```
-python3 LLMEC.py [PATH_TO_DATASET]
+python3 src/LLMEC.py [PATH_TO_PROMPT_DATASET]
 ```
 
-Or use the tool programmatically like this:
+The prompt dataset should be a CSV file with a column "prompt", containing the prompts as strings.
+
+It is also possible to use the tool programmatically like this:
 
 ```python
 from LLMEC import LLMEC
@@ -78,8 +88,25 @@ llm_ec = LLMEC(config_path='path/to/config.ini')
 df = llm_ec.run_prompt_with_energy_monitoring(
     prompt="How can we use Artificial Intelligence for a better society?",
     save_power_data=True,
-    plot_power_usage=True
+    plot_power_usage=False
 )
+```
+
+### 2. Aggregate results
+
+To aggregate the results from multiple inference runs, use the following command:
+
+```
+python3 src/plot_data_collection_results.py
+```
+
+### 3. Compare monitoring tools
+
+To compare results from multiple monitoring tools (MELODI, PyJoules, CodeCarbon and EnergyMeter), run:
+
+```
+python3 src/merge_tools_data.py
+python3 src/compare_monitoring_tools.py data/data_all_monitoring_tools.csv
 ```
 
 ## Configuration
