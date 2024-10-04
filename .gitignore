@@ -25,9 +25,9 @@ output.json
 
 # images
 plots
-#*.png
-#*.jpg
-#*.jpeg
+*.png
+*.jpg
+*.jpeg
 #*.pdf
 
 # jekyll
