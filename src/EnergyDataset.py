@@ -27,12 +27,9 @@ class EnergyDataset():
     """Class for handling datasets.
 
     Attributes:
+        filename (str): The filename of the dataset.
         df (pd.DataFrame): The dataset as a pandas DataFrame.
-        dataset_name (str): The name of the dataset.
-        model_name (str): The name of the model.
-        model_size (str): The size of the model.
-        promptset (str): The promptset used.
-        hardware (str): The hardware used.
+        metadata (dict): Metadata for the dataset.
         energy_consumption_column_name (str): The name of the column containing energy consumption.
         energy_consumption_llm_column_name (str): The name of the column containing energy consumption from LLM.
         numeric_columns (list): A list of column names containing numeric values.
@@ -42,11 +39,11 @@ class EnergyDataset():
 
     def __init__(self, 
                  filename, 
-                 dataset_name="Unknown",
-                 model_name="Unknown",
-                 model_size="Unknown",
-                 promptset="Unknown",
-                 hardware="Unknown"):
+                 dataset_name=None,
+                 model_name=None,
+                 model_size=None,
+                 promptset=None,
+                 hardware=None):
         """Initialize the EnergyDataset object.
 
         Args:
@@ -59,17 +56,56 @@ class EnergyDataset():
 
         """
 
+        self.filename = filename
         self.df = pd.read_csv(filename, index_col=0)
-        self.dataset_name = dataset_name
-        self.model_name = model_name
-        self.model_size = model_size
-        self.promptset = promptset
-        self.hardware = hardware
         self.energy_consumption_column_name = "energy_consumption"
         self.energy_consumption_llm_column_name = "energy_consumption_llm"
 
+        self.metadata = {
+            "dataset_name": dataset_name,
+            "model_name": model_name,
+            "model_size": model_size,
+            "promptset": promptset,
+            "hardware": hardware
+        }
+
+        for key, value in self.metadata.items():
+            if value is None:
+                self.metadata[key] = self._infer_metadata(key)
+
         self.preprocess_data()
         self.statistics = self.calculate_statistics()
+
+    def _infer_metadata(self, key):
+        """Infer metadata.
+
+        Args:
+            key (str): The key to infer.
+
+        Returns:
+            str: The inferred metadata.
+
+        """
+
+        try:
+            if key == "dataset_name":
+                return os.path.basename(self.filename)
+            elif key == "model_name":
+                return self.df["model_name"].unique()[0]
+            elif key == "model_size":
+                # Try to find the model size in the model name, e.g. "gemma:2b".
+                model_name = self.df["model_name"].unique()[0]
+                if ":" in model_name:
+                    return model_name.split(":")[1]
+                else:
+                    return "Unknown"
+            elif key == "promptset":
+                return self.df["promptset"].unique()[0]
+            elif key == "hardware":
+                return self.df["hardware"].unique()[0]
+        except KeyError:
+            print(f"Metadata ({key}) could not be inferred.")
+            return "Unknown"
 
     def preprocess_data(self):
         """Preprocess the dataset.
@@ -88,7 +124,6 @@ class EnergyDataset():
             'prompt_duration', 
             'response_token_length', 
             'response_duration',
-            'energy_per_token'
         ]
 
         # Include every column starting with energy_consumption*
@@ -99,7 +134,9 @@ class EnergyDataset():
 
         # Calculate energy consumption per token for all columns starting with energy_consumption, keeping the same suffix
         for col in [col for col in self.df.columns if col.startswith(self.energy_consumption_llm_column_name)]:
-            self.df[f"{col}_per_token"] = self.df[col] / self.df["response_token_length"]
+            new_col = f"{col}_per_token"
+            self.df[new_col] = self.df[col] / self.df["response_token_length"]
+            self.numeric_columns.append(new_col)
 
         # Handle any additional necessary preprocessing
         self.df.dropna(inplace=True)  # Drop rows with any NaN values
@@ -115,7 +152,7 @@ class EnergyDataset():
         statistics['median'] = self.df[self.numeric_columns].median()
         statistics['range'] = statistics['max'] - statistics['min']
         statistics['iqr'] = statistics['75%'] - statistics['25%']
-        statistics['mode'] = self.df[numeric_columns].mode().iloc[0]
+        statistics['mode'] = self.df[self.numeric_columns].mode().iloc[0]
         statistics['skewness'] = self.df[self.numeric_columns].skew()
         statistics['kurtosis'] = self.df[self.numeric_columns].kurtosis()
         statistics['std_dev'] = self.df[self.numeric_columns].std()
@@ -146,9 +183,9 @@ class EnergyDataset():
 
         # Print statistics. The energy consumption must be in scientific format with 2 decimals
         if latex:
-            print(f"& {promptset} & {model_name} & {model_size} & {hardware} & {number_of_prompts} & {mean_energy_consumption:.2e} & {mean_response_length:.2f} \\\\")
+            print(f"& {self.metadata['promptset']} & {self.metadata['model_name']} & {self.metadata['model_size']} & {self.metadata['hardware']} & {number_of_prompts} & {mean_energy_consumption:.2e} & {mean_response_length:.2f} \\\\")
         else:
-            print(f"Dataset: {self.dataset_name}")
+            print(f"Dataset: {self.metadata['dataset_name']}")
             print(f"Prompt dataset: {promptset}")
             print(f"Model: {model_name}")
             print(f"Model size: {model_size}")
@@ -159,12 +196,6 @@ class EnergyDataset():
 
     def display_expanded_statistics(self):
         """Print statistics for the dataset."""
-
-        # Extract model name and size from dataset name
-        promptset = self.dataset_name.split("_")[0]
-        model_name = self.dataset_name.split("_")[1]
-        model_size = self.dataset_name.split("_")[2]
-        hardware = self.dataset_name.split("_")[3].split(".")[0]
 
         # Extract statistics, where each column is a statistic and each row is a relevant column
         statistics = self.statistics
