@@ -60,6 +60,7 @@ class EnergyDataset():
         self.df = pd.read_csv(filename, index_col=0)
         self.energy_consumption_column_name = "energy_consumption"
         self.energy_consumption_llm_column_name = "energy_consumption_llm"
+        self.energy_per_token_column_name = "energy_per_token"
 
         self.metadata = {
             "dataset_name": dataset_name,
@@ -128,15 +129,18 @@ class EnergyDataset():
 
         # Include every column starting with energy_consumption*
         self.numeric_columns += [col for col in self.df.columns if col.startswith(self.energy_consumption_column_name)]
+        self.energy_consumption_llm_columns = [col for col in self.df.columns if col.startswith(self.energy_consumption_llm_column_name)]
+        self.energy_per_token_columns = []
 
         for col in self.numeric_columns:
             self.df[col] = pd.to_numeric(self.df[col], errors='coerce')
 
         # Calculate energy consumption per token for all columns starting with energy_consumption, keeping the same suffix
         for col in [col for col in self.df.columns if col.startswith(self.energy_consumption_llm_column_name)]:
-            new_col = f"{col}_per_token"
+            new_col = col.replace(self.energy_consumption_llm_column_name, self.energy_per_token_column_name)
             self.df[new_col] = self.df[col] / self.df["response_token_length"]
             self.numeric_columns.append(new_col)
+            self.energy_per_token_columns.append(new_col)
 
         # Handle any additional necessary preprocessing
         self.df.dropna(inplace=True)  # Drop rows with any NaN values

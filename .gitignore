@@ -28,7 +28,7 @@ plots
 *.png
 *.jpg
 *.jpeg
-#*.pdf
+*.pdf
 
 # jekyll
 #_site/

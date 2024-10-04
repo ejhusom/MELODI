@@ -5,7 +5,7 @@ import pytest
 # Append src directory to the system path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from utils import kwh2joules, joules2kwh
+import utils
 
 @pytest.mark.parametrize(
     "joules, kwh",
@@ -21,7 +21,7 @@ def test_joules2kwh(joules, kwh):
     """
     Test the joules2kwh function with various inputs.
     """
-    result = joules2kwh(joules)
+    result = utils.joules2kwh(joules)
     assert result == pytest.approx(kwh), f"Expected {kwh}, got {result}"
 
 @pytest.mark.parametrize(
@@ -38,5 +38,27 @@ def test_kwh2joules(kwh, joules):
     """
     Test the kwh2joules function with various inputs.
     """
-    result = kwh2joules(kwh)
+    result = utils.kwh2joules(kwh)
     assert result == pytest.approx(joules), f"Expected {joules}, got {result}"
+
+def test_clean_filename():
+    # Test replacement of unsafe characters
+    assert utils.clean_filename('my:file/name*?.txt') == 'my_file_name__.txt'
+
+    # Test replacement of multiple unsafe characters
+    assert utils.clean_filename('a/b:c?d*e"f|g') == 'a_b_c_d_e_f_g'
+    
+    # Test leading/trailing whitespace stripping
+    assert utils.clean_filename('  myfile.txt  ') == 'myfile.txt'
+    
+    # Test no illegal characters - filename should remain the same
+    assert utils.clean_filename('safe_filename.txt') == 'safe_filename.txt'
+    
+    # Test reserved Windows filename
+    assert utils.clean_filename('CON.txt') == 'CON.txt'
+
+    # Test filename without extension
+    assert utils.clean_filename('test_file') == 'test_file'
+
+    # Test empty string as input
+    assert utils.clean_filename('') == ''
