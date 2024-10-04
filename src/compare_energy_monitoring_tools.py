@@ -10,35 +10,6 @@ def merge_data_from_monitoring_tools():
     df_emissions = df_emissions[["experiment_id", "cpu_energy", "gpu_energy", "ram_energy", "energy_consumed"]]
 
     # Merge codecarbon data into main dataframe, which now contains data from both scaphandre, pyjoules and codecarbon.
-
-    # Add suffix to indicate which measurements come from scaphandre and which come from codecarbon.
-    df = df.rename(columns={
-        "energy_consumption_llm_cpu": "energy_consumption_llm_cpu",
-        "energy_consumption_llm_gpu": "energy_consumption_llm_gpu",
-        "energy_consumption_llm_total": "energy_consumption_llm_total",
-        "cpu_energy": "cpu_energy_codecarbon",
-        "gpu_energy": "gpu_energy_codecarbon",
-        "ram_energy": "ram_energy_codecarbon",
-        "energy_consumed": "energy_consumed_codecarbon"
-    })
-
-    # Add ram_energy_codecarbon to the cpu_energy_codecarbon to get the total energy consumed by the system.
-    df["energy_consumed_cpu + ram_codecarbon"] = df["cpu_energy_codecarbon"] + df["ram_energy_codecarbon"]
-
-    # Save the resulting dataframe to "data/dataset_all_monitoring_tools.csv".
-    df.to_csv("data/dataset_all_monitoring_tools.csv", index=False)
-
-    return df
-
-def merge_data_from_monitoring_tools_v2():
-    # Read "data/dataset.csv" and "emissions.csv".
-    df = pd.read_csv("data/dataset.csv")
-    df_emissions = pd.read_csv("emissions.csv")
-
-    # From emissions, select only the columns "experiment_id", "cpu_energy", "gpu_energy", "ram_energy" and "energy_consumed".
-    df_emissions = df_emissions[["experiment_id", "cpu_energy", "gpu_energy", "ram_energy", "energy_consumed"]]
-
-    # Merge codecarbon data into main dataframe, which now contains data from both scaphandre, pyjoules and codecarbon.
     # df = df.merge(df_emissions, left_on="prompt", right_on="experiment_id", how="left", suffixes=("", "_codecarbon"))
     df = df.join(df_emissions)
 
@@ -85,5 +56,5 @@ def plot_results(df):
     plt.show()
 
 if __name__ == "__main__":
-    df = merge_data_from_monitoring_tools_v2()
+    df = merge_data_from_monitoring_tools()
     plot_results(df)
