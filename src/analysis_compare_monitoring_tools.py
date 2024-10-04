@@ -24,9 +24,9 @@ from config import config
 from EnergyDataset import EnergyDataset
 import utils
 
-# plt.style.use('seaborn-v0_8')
-# plt.rcParams['boxplot.notch'] = True
-# plt.rcParams['boxplot.showfliers'] = False
+plt.style.use('seaborn-v0_8')
+plt.rcParams['boxplot.notch'] = True
+plt.rcParams['boxplot.showfliers'] = False
 
 def compare_monitoring_tools_boxplots(dataset: EnergyDataset, per_token=False):
     """Compare energy consumption measured by different monitoring tools.
@@ -86,20 +86,16 @@ def compare_monitoring_tools_boxplots(dataset: EnergyDataset, per_token=False):
     plt.savefig(config.PLOTS_DIR_PATH / f"{plot_basename}.pdf")
     plt.show()
 
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-import pandas as pd
-
-def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type='bar', log_scale=True):
+def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type='bar', log_scale=True, file_format='pdf'):
     """Compare energy consumption measured by different monitoring tools.
 
     Args:
         dataset (EnergyDataset): Dataset containing the data to compare.
         per_token (bool): If True, the energy consumption is divided by the
             number of tokens in the prompt.
-        plot_type (str): Type of plot to generate ('bar', 'violin', 'swarm', 'box').
+        plot_type (str): Type of plot to generate ('bar', 'violin', 'box').
         log_scale (bool): If True, the y-axis is logarithmic.
+        file_format (str): File format to save the plot in ('pdf', 'png').
 
     """
 
@@ -141,9 +137,11 @@ def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type=
     }
     plot_df = pd.DataFrame(data)
 
+    figsize = (4.8, 6) if plot_type == 'bar' else (4.8, 7)
+
     # Plot based on the chosen type
     if plot_type == 'bar':
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=figsize)
 
         # Create a grouped bar chart (grouped by hardware, colors for tools)
         x = np.arange(2)  # Two groups: CPU and GPU
@@ -164,28 +162,53 @@ def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type=
         plt.tight_layout()
 
     elif plot_type == 'violin':
-        sns.violinplot(x='Hardware', y='Energy (kWh)', hue='Tool', data=plot_df, split=True)
+        fig, axs = plt.subplots(2, 1, figsize=(figsize))
+        sns.violinplot(ax=axs[0], data=df[cpu_cols])
 
-    elif plot_type == 'swarm':
-        sns.swarmplot(x='Hardware', y='Energy (kWh)', hue='Tool', data=plot_df)
+        axs[0].set_title('CPU Energy Consumption')
+        axs[0].set_ylabel('Energy (kWh)')
+        axs[0].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon", "EnergyMeter"])
+
+        sns.violinplot(ax=axs[1], data=df[gpu_cols])
+
+        axs[1].set_title('GPU Energy Consumption')
+        axs[1].set_ylabel('Energy (kWh)')
+        axs[1].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon", "EnergyMeter"])
 
     elif plot_type == 'box':
-        sns.boxplot(x='Hardware', y='Energy (kWh)', hue='Tool', data=plot_df)
+        fig, axs = plt.subplots(2, 1, figsize=figsize)
+
+        df.boxplot(column=cpu_cols, ax=axs[0])
+
+        axs[0].set_title('CPU Energy Consumption')
+        axs[0].set_ylabel('Energy (kWh)')
+        axs[0].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon", "EnergyMeter"])
+
+        df.boxplot(column=gpu_cols, ax=axs[1])
+
+        axs[1].set_title('GPU Energy Consumption')
+        axs[1].set_ylabel('Energy (kWh)')
+        axs[1].set_xticklabels(["MELODI", "PyJoules", "CodeCarbon", "EnergyMeter"])
 
     else:
-        raise ValueError(f"Unknown plot_type '{plot_type}'. Use 'bar', 'violin', 'swarm', or 'box'.")
+        raise ValueError(f"Unknown plot_type '{plot_type}'. Use 'bar', 'violin', or 'box'.")
 
     # Set y-axis scale based on log_scale argument
     if log_scale and plot_type != 'bar':
-        plt.yscale('log')
+        axs[0].set_yscale('log')
+        axs[1].set_yscale('log')
 
     # Save the plot
-    plot_basename = f"tool_comparison_{plot_type}_graph_{dataset.metadata['model_name']}_{dataset.metadata['model_size']}_{dataset.metadata['promptset']}_{dataset.metadata['hardware']}"
+    plt.tight_layout()
+    plot_basename = f"tool_comparison_{plot_type}_{dataset.metadata['model_name']}_{dataset.metadata['model_size']}_{dataset.metadata['promptset']}_{dataset.metadata['hardware']}"
     if per_token:
         plot_basename += "_per_token"
 
+    if log_scale:
+        plot_basename += "_log_scale"
+
     plot_basename = utils.clean_filename(plot_basename)
-    plt.savefig(config.PLOTS_DIR_PATH / f"{plot_basename}.pdf")
+    plt.savefig(config.PLOTS_DIR_PATH / f"{plot_basename}.{file_format}")
     plt.show()
 
 
@@ -196,7 +219,7 @@ def run_all_plot_options(dataset: EnergyDataset):
         dataset (EnergyDataset): Dataset containing the data to compare.
 
     """
-    plot_types = ['bar', 'violin', 'swarm', 'box']
+    plot_types = ['bar', 'violin', 'box']
     log_scale_options = [True, False]
 
     for plot_type in plot_types:
@@ -221,8 +244,4 @@ if __name__ == "__main__":
                             promptset=args.promptset, 
                             hardware=args.hardware)
 
-    # compare_monitoring_tools_boxplots(dataset)
-    # compare_monitoring_tools_boxplots(dataset, per_token=True)
-    # compare_monitoring_tools_barchart(dataset)
-    # compare_monitoring_tools_barchart(dataset, per_token=True)
     run_all_plot_options(dataset)
