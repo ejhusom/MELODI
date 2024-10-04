@@ -356,6 +356,10 @@ class LLMEC():
 
         return data_df
 
+    # def run_inference(self, prompt, llm_client):
+    #     data = llm_client.call_api(prompt=prompt, stream=False)
+    #     return data
+
     def postprocess_nvidiasmi_data(self, df):
         """Postprocess nvidia-smi data.
 
