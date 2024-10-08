@@ -105,7 +105,6 @@ python3 src/plot_data_collection_results.py
 To compare results from multiple monitoring tools (MELODI, PyJoules, CodeCarbon and EnergyMeter), run:
 
 ```
-python3 src/merge_tools_data.py
 python3 src/analysis_compare_monitoring_tools.py data/data_all_monitoring_tools.csv
 ```
 
