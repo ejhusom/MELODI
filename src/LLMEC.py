@@ -65,7 +65,6 @@ class LLMEC():
         llm_service=None,
         llm_api_url=None,
         model_name=None,
-        stream=False,
         save_power_data=False,
         plot_power_usage=False,
         task_type="unknown",
@@ -77,7 +76,6 @@ class LLMEC():
             llm_service (str, default=None): The LLM service to use.
             llm_api_url (str, default=None): The API URL of the LLM service.
             model_name (str, default=None): The model name for the request. Defaults to "mistral".
-            stream (bool, default=False): Whether to stream the response. Defaults to False.
             save_power_data (bool, default=False): Save power usage data to file.
             plot_power_usage (bool, default=False): Plot power usage.
             task_type (str, default="unknown"): The type of task the prompt
@@ -112,6 +110,12 @@ class LLMEC():
                   disk_idle_power=0.03,   # How many Watts are used when the storage is idle (you can usually find it in specs of your storage)
                   label=p,     # A label to identify the measurement, in this case the prompt
                   include_idle=False)     # If energy used during idle should be accounted for in the measurement. Defaults to False.
+
+            @measure_energy(handler=csv_handler)
+            @track_emissions(experiment_id=p, output_file=config.CODECARBON_TEMP_FILE)
+            def run_inference_old():
+                data = llm_client.call_api(prompt=p)
+                return data
 
             # Start power measurements
             if self.verbosity > 0:
@@ -152,16 +156,10 @@ class LLMEC():
             if self.verbosity > 0:
                 print("Calling LLM service...")
 
-            @measure_energy(handler=csv_handler)
-            @track_emissions(experiment_id=p, output_file=config.CODECARBON_TEMP_FILE)
-            def run_inference():
-                data = llm_client.call_api(prompt=p, stream=stream)
-                return data
-
             # Perform inference with LLM
             start_time = datetime.datetime.now(tz=pytz.utc)
             em.begin()
-            data = run_inference()
+            data = run_inference_old()
             em.end()
             end_time = datetime.datetime.now(tz=pytz.utc)
         
@@ -377,10 +375,6 @@ class LLMEC():
             config.remove_temp_files()
 
         return data_df
-
-    # def run_inference(self, prompt, llm_client):
-    #     data = llm_client.call_api(prompt=prompt, stream=False)
-    #     return data
 
     def postprocess_nvidiasmi_data(self, df):
         """Postprocess nvidia-smi data.
