@@ -11,6 +11,7 @@ Author:   Erik Johannes Husom
 Created:  2024-06-08
 
 """
+import os
 from pathlib import Path
 
 class Config:
@@ -45,6 +46,7 @@ class Config:
         self.SCAPHANDRE_STREAM_TEMP_FILE = "tmp_scaphandre.json"
         self.NVIDIASMI_STREAM_TEMP_FILE = "tmp_nvidiasmi.csv"
         self.PYJOULES_TEMP_FILE = "tmp_pyjoules.csv"
+        self.CODECARBON_TEMP_FILE = "tmp_codecarbon.csv"
 
         self._init_paths()
 
@@ -58,6 +60,13 @@ class Config:
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
+
+    def remove_temp_files(self):
+        """Remove temporary files."""
+        os.remove(self.SCAPHANDRE_STREAM_TEMP_FILE)
+        os.remove(self.NVIDIASMI_STREAM_TEMP_FILE)
+        os.remove(self.PYJOULES_TEMP_FILE)
+        os.remove(self.CODECARBON_TEMP_FILE)
 
 # Instantiate a single configuration object to use throughout your application
 config = Config()

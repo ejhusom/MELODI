@@ -153,7 +153,7 @@ class LLMEC():
                 print("Calling LLM service...")
 
             @measure_energy(handler=csv_handler)
-            @track_emissions(experiment_id=p)
+            @track_emissions(experiment_id=p, output_file=config.CODECARBON_TEMP_FILE)
             def run_inference():
                 data = llm_client.call_api(prompt=p, stream=stream)
                 return data
@@ -255,6 +255,24 @@ class LLMEC():
                 print("Failed reading PyJoules data.")
                 continue
 
+            # Read and postprocess CodeCarbon data
+            try:
+                codecarbon_data = pd.read_csv(config.CODECARBON_TEMP_FILE)
+                codecarbon_data = codecarbon_data.rename(columns={
+                    "cpu_energy": "energy_consumption_llm_cpu_codecarbon",
+                    "gpu_energy": "energy_consumption_llm_gpu_codecarbon",
+                    "ram_energy": "energy_consumption_llm_ram_codecarbon",
+                    "energy_consumed": "energy_consumption_llm_total_codecarbon"
+                })
+                codecarbon_data["energy_consumption_llm_cpu_codecarbon"] = (
+                        codecarbon_data["energy_consumption_llm_cpu_codecarbon"] 
+                        + codecarbon_data["energy_consumption_llm_ram_codecarbon"]
+                )
+            except:
+                print("Failed reading CodeCarbon data.")
+                continue
+
+
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
 
@@ -312,9 +330,15 @@ class LLMEC():
                     data_df["energy_consumption_llm_gpu"]
             )
 
+            data_df["energy_consumption_llm_cpu_codecarbon"] = codecarbon_data["energy_consumption_llm_cpu_codecarbon"]
+            data_df["energy_consumption_llm_gpu_codecarbon"] = codecarbon_data["energy_consumption_llm_gpu_codecarbon"]
+            data_df["energy_consumption_llm_total_codecarbon"] = codecarbon_data["energy_consumption_llm_total_codecarbon"]
+            data_df["duration_codecarbon"] = codecarbon_data["duration"]
+
             data_df["energy_consumption_llm_cpu_pyjoules"] = pyjoules_data["consumption"].sum()
             data_df["energy_consumption_llm_gpu_pyjoules"] = pyjoules_data["gpu_consumption"].sum()
             data_df["energy_consumption_llm_total_pyjoules"] = pyjoules_data["total_consumption"].sum()
+            data_df["duration_pyjoules"] = pyjoules_data["duration"]
 
             data_df["energy_consumption_llm_cpu_energymeter"] = em.get_total_joules_cpu()[0] + em.get_total_joules_dram()[0]
             data_df["energy_consumption_llm_gpu_energymeter"] = em.get_total_joules_gpu()
@@ -350,9 +374,7 @@ class LLMEC():
                     print(f"Data saved with timestamp {timestamp_filename}")
 
             # Delete temporary files
-            os.remove(config.SCAPHANDRE_STREAM_TEMP_FILE)
-            os.remove(config.NVIDIASMI_STREAM_TEMP_FILE)
-            os.remove(config.PYJOULES_TEMP_FILE)
+            config.remove_temp_files()
 
         return data_df
 

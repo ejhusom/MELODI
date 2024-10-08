@@ -106,7 +106,7 @@ To compare results from multiple monitoring tools (MELODI, PyJoules, CodeCarbon 
 
 ```
 python3 src/merge_tools_data.py
-python3 src/compare_monitoring_tools.py data/data_all_monitoring_tools.csv
+python3 src/analysis_compare_monitoring_tools.py data/data_all_monitoring_tools.csv
 ```
 
 ## Configuration
