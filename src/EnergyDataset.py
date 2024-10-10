@@ -96,8 +96,6 @@ class EnergyDataset():
             elif key == "model_size":
                 # Try to find the model size in the model name, e.g. "gemma:2b".
                 model_name = self.df["model_name"].unique()[0]
-                if ":" in model_name:
-                    return model_name.split(":")[1]
                 else:
                     return "Unknown"
             elif key == "promptset":
@@ -131,6 +129,9 @@ class EnergyDataset():
         self.numeric_columns += [col for col in self.df.columns if col.startswith(self.energy_consumption_column_name)]
         self.energy_consumption_llm_columns = [col for col in self.df.columns if col.startswith(self.energy_consumption_llm_column_name)]
         self.energy_per_token_columns = []
+
+        # Include every column starting with duration*
+        self.numeric_columns += [col for col in self.df.columns if col.startswith('duration')]
 
         for col in self.numeric_columns:
             self.df[col] = pd.to_numeric(self.df[col], errors='coerce')

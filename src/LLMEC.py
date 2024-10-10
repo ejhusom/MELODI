@@ -68,6 +68,7 @@ class LLMEC():
         save_power_data=False,
         plot_power_usage=False,
         task_type="unknown",
+        monitoring_service="melodi",
     ):
         """Prompts LLM and monitors energy consumption.
 
@@ -80,6 +81,9 @@ class LLMEC():
             plot_power_usage (bool, default=False): Plot power usage.
             task_type (str, default="unknown"): The type of task the prompt
                 asks for. This can be used to categorize the data.
+            monitoring_service (str, default="melodi"): The monitoring service
+                to use. Available services are "melodi", "pyjoules", "codecarbon",
+                and "energymeter".
             TODO: batch_mode (bool, default=False): 
         """
         if llm_service is None:
@@ -162,7 +166,7 @@ class LLMEC():
             data = run_inference_old()
             em.end()
             end_time = datetime.datetime.now(tz=pytz.utc)
-        
+
             csv_handler.save_data()
 
             if not data:
@@ -199,7 +203,6 @@ class LLMEC():
             num_attempts = 5
             timeout = 3
 
-
             # Try reading the data for num_attempts times
             for i in range(num_attempts):
                 try:
@@ -218,15 +221,13 @@ class LLMEC():
                         break
 
             if failed_reading_data:
-                data_df = None
+                print("Failed reading data. Skipping prompt.")
                 continue
 
-            # nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
             try:
                 nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
             except:
                 print("Failed postprocessing nvidiasmi data")
-                data_df = None
                 continue
 
             # Read and postprocess PyJoules data, from a csv with ";" as separator
@@ -249,8 +250,8 @@ class LLMEC():
                 pyjoules_data["consumption"] /= 3.6e12
                 pyjoules_data["gpu_consumption"] /= 3.6e12
                 pyjoules_data["total_consumption"] /= 3.6e12
-            except:
-                print("Failed reading PyJoules data.")
+            except Exception as e:
+                print("Failed reading PyJoules data:", e)
                 continue
 
             # Read and postprocess CodeCarbon data
@@ -273,8 +274,6 @@ class LLMEC():
 
             # Save GPU power draw together with the other measurements
             metrics_per_process["llm_gpu"] = nvidiasmi_data
-
-            # print(metrics_per_process)
 
             print("==============================")
             a = datetime.datetime.fromtimestamp(
@@ -307,17 +306,22 @@ class LLMEC():
                 plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
+            breakpoint()
+
+            data["energy_consumption_llm_cpu"] = 0
 
             for cmdline, energy_consumption in energy_consumption_dict.items():
                 if "gpu" in cmdline:
                     data["energy_consumption_llm_gpu"] = energy_consumption
-                if config.LLM_SERVICE_KEYWORD in cmdline:
-                    data["energy_consumption_llm_cpu"] = energy_consumption
+                if config.LLM_SERVICE_KEYWORD in cmdline and not config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    data["energy_consumption_llm_cpu"] += energy_consumption
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_monitoring"] = energy_consumption
 
             data["type"] = task_type
             data["clock_duration"] = end_time - start_time
+            # Convert datetime.timedelta to float number of seconds
+            data["duration"] = data["clock_duration"].total_seconds()
             data["start_time"] = start_time
             data["end_time"] = end_time
 
@@ -374,7 +378,394 @@ class LLMEC():
             # Delete temporary files
             config.remove_temp_files()
 
-        return data_df
+        try:
+            return data_df
+        except UnboundLocalError:
+            print("Due to an error, no data was collected.")
+            return None
+
+    def run_inference(self, prompt, llm_client):
+        """Run inference with the LLM.
+
+        Args:
+            prompt (str): The prompt to send to the LLM.
+            llm_client (LLMAPIClient): The LLM client to use.
+
+        Returns:
+            data (dict): The response from the LLM.
+
+        """
+
+        data = llm_client.call_api(prompt=prompt)
+
+        return data
+
+    def run_prompt_with_energy_monitoring_new(
+        self,
+        prompt="How can we use Artificial Intelligence for a better society?",
+        llm_service=None,
+        llm_api_url=None,
+        model_name=None,
+        save_power_data=False,
+        plot_power_usage=False,
+        task_type="unknown",
+        monitoring_service="melodi",
+    ):
+        """Prompts LLM and monitors energy consumption.
+
+        Args:
+            prompt (str or list of str): The prompt(s) to be sent to the LLM.
+            llm_service (str, default=None): The LLM service to use.
+            llm_api_url (str, default=None): The API URL of the LLM service.
+            model_name (str, default=None): The model name for the request. Defaults to "mistral".
+            save_power_data (bool, default=False): Save power usage data to file.
+            plot_power_usage (bool, default=False): Plot power usage.
+            task_type (str, default="unknown"): The type of task the prompt
+                asks for. This can be used to categorize the data.
+            monitoring_service (str, default="melodi"): The monitoring service
+                to use. Available services are "melodi", "pyjoules", "codecarbon",
+                and "energymeter".
+            TODO: batch_mode (bool, default=False): 
+        """
+        if llm_service is None:
+            llm_service = self.config.get("General", "llm_service", fallback="ollama")
+
+        if llm_api_url is None:
+            llm_api_url = self.config.get("General", "llm_api_url", fallback="http://localhost:11434/api/chat")
+
+        if model_name is None:
+            model_name = self.config.get("General", "model_name", fallback="mistral")
+
+        # LLM parameters
+        llm_client = LLMAPIClient(
+            llm_service=llm_service, api_url=llm_api_url, model_name=model_name, role="user"
+        )
+
+        # Make input prompt(s) iterable
+        if isinstance(prompt, str):
+            prompts = [prompt]
+
+        failed_reading_data = False
+
+        for p in prompts: 
+            csv_handler = CSVHandler(config.PYJOULES_TEMP_FILE)
+
+            em = EnergyMeter(disk_avg_speed=3000*1e6, # The average speed of your storage (see below how you can get it)
+                  disk_active_power=0.1,    # How many Watts are used when the storage is reading or writing (you can usually find it in specs of your storage)
+                  disk_idle_power=0.03,   # How many Watts are used when the storage is idle (you can usually find it in specs of your storage)
+                  label=p,     # A label to identify the measurement, in this case the prompt
+                  include_idle=False)     # If energy used during idle should be accounted for in the measurement. Defaults to False.
+
+            @measure_energy(handler=csv_handler)
+            @track_emissions(experiment_id=p, output_file=config.CODECARBON_TEMP_FILE)
+            def run_inference_old():
+                data = llm_client.call_api(prompt=p)
+                return data
+
+            # Start power measurements
+            if self.verbosity > 0:
+                print("Starting power measurements...")
+
+            # Start nvidia-smi for monitoring GPU
+            nvidiasmi_process = subprocess.Popen(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=timestamp,power.draw",
+                    "--format=csv",
+                    "--loop-ms", str(config.SAMPLE_FREQUENCY_NANO_SECONDS/1e6), # Use the same frequency as scaphandre
+                    "--filename", config.NVIDIASMI_STREAM_TEMP_FILE,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            scaphandre_process = subprocess.Popen(
+                [
+                    "scaphandre",
+                    "json",
+                    "--timeout", "10000000000",
+                    "--step", "0",
+                    "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
+                    "--resources",
+                    "--process-regex", "ollama",
+                    "--file", config.SCAPHANDRE_STREAM_TEMP_FILE,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            time.sleep(config.MONITORING_START_DELAY)
+
+            # Prompt LLM
+            if self.verbosity > 0:
+                print("Calling LLM service...")
+
+            # Perform inference with LLM
+            start_time = datetime.datetime.now(tz=pytz.utc)
+            em.begin()
+            data = run_inference_old()
+            em.end()
+            end_time = datetime.datetime.now(tz=pytz.utc)
+
+            csv_handler.save_data()
+
+            if not data:
+                print("Failed to get a response.")
+                sys.exit(1)
+
+            if self.verbosity > 0:
+                print("Received response from LLM service.")
+
+            # Collect power measurements
+            time.sleep(config.MONITORING_END_DELAY)
+            scaphandre_process.terminate()
+            nvidiasmi_process.terminate()
+
+            if self.verbosity > 0:
+                print("Power measurements stopped.")
+
+            with open(config.SCAPHANDRE_STREAM_TEMP_FILE, "r") as f:
+                metrics_stream = f.read()
+
+            metrics = parse_json_objects(metrics_stream)
+            if metrics == []:
+                print("Found no metrics to parse.")
+                continue
+
+            metrics_per_process = self._parse_metrics(metrics)
+
+            # Convert from microwatts to Watts
+            for process in metrics_per_process:
+                metrics_per_process[process]["consumption"] /= 1e6
+
+            # Load GPU power draw measured by nvidia-smi:
+            # Sometimes the writing of the GPU power data has not finished, so allow for some time if reading the data gives an errror.
+            num_attempts = 5
+            timeout = 3
+
+            # Try reading the data for num_attempts times
+            for i in range(num_attempts):
+                try:
+                    # Read nvidia-smi data, and skipping last row, since it sometimes is incomplete.
+                    nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE, on_bad_lines="skip")[:-1]
+                    break  # Exit the loop if the read is successful
+                except pd.errors.EmptyDataError:
+                    if i < num_attempts - 1:
+                        print(f"Error reading data. Waiting {timeout} second and trying again ({i+1}/{num_attempts})")
+                        time.sleep(timeout)
+                    else:
+                        print(f"Error reading data after {num_attempts} attempts. Giving up.")
+                        nvidiasmi_data = None  # Set the data to None if all attempts fail
+                        # Continue with next prompt
+                        failed_reading_data = True
+                        break
+
+            if failed_reading_data:
+                print("Failed reading data. Skipping prompt.")
+                continue
+
+            try:
+                nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
+            except:
+                print("Failed postprocessing nvidiasmi data")
+                continue
+
+            # Read and postprocess PyJoules data, from a csv with ";" as separator
+            # The columns are: timestamp, tag, duration, package_0, dram_0, core_0, uncore_0, and nvidia_gpu_0. Additional columns may exists depending on the hardware. The timestamp column has a UNIX timestamp, and should be converted to datetime. The columns wtih "gpu" in the name should be summed to get the total GPU power draw. The rest of the columns with energy measurements (package_*, dram_*, core_*, uncore_*) should be summed to get the total CPU power draw. The final df should consist of three columns: timestamp, duration, cpu_consumption, and gpu_consumption.
+            try:
+                pyjoules_data = pd.read_csv(config.PYJOULES_TEMP_FILE, sep=";")
+                pyjoules_data["timestamp"] = pd.to_datetime(pyjoules_data["timestamp"], unit="s", utc=True)
+                # Sum CPU consumption over all package/core/dram/uncore columns
+                cpu_columns = [col for col in pyjoules_data.columns if "package" in col or "dram" in col or "core" in col or "uncore" in col]
+                pyjoules_data["consumption"] = pyjoules_data[cpu_columns].sum(axis=1)
+                # Sum GPU consumption over all gpu columns
+                gpu_columns = [col for col in pyjoules_data.columns if "nvidia_gpu" in col]
+                pyjoules_data["gpu_consumption"] = pyjoules_data[gpu_columns].sum(axis=1)
+                # Drop the individual columns
+                pyjoules_data = pyjoules_data[["timestamp", "duration", "consumption", "gpu_consumption"]]
+                # Add column with total consumption
+                pyjoules_data["total_consumption"] = pyjoules_data["consumption"] + pyjoules_data["gpu_consumption"]
+
+                # The measurements are in microJoules, convert them to kWh
+                pyjoules_data["consumption"] /= 3.6e12
+                pyjoules_data["gpu_consumption"] /= 3.6e12
+                pyjoules_data["total_consumption"] /= 3.6e12
+            except Exception as e:
+                print("Failed reading PyJoules data:", e)
+                continue
+
+            # Read and postprocess CodeCarbon data
+            try:
+                codecarbon_data = pd.read_csv(config.CODECARBON_TEMP_FILE)
+                codecarbon_data = codecarbon_data.rename(columns={
+                    "cpu_energy": "energy_consumption_llm_cpu_codecarbon",
+                    "gpu_energy": "energy_consumption_llm_gpu_codecarbon",
+                    "ram_energy": "energy_consumption_llm_ram_codecarbon",
+                    "energy_consumed": "energy_consumption_llm_total_codecarbon"
+                })
+                codecarbon_data["energy_consumption_llm_cpu_codecarbon"] = (
+                        codecarbon_data["energy_consumption_llm_cpu_codecarbon"] 
+                        + codecarbon_data["energy_consumption_llm_ram_codecarbon"]
+                )
+            except:
+                print("Failed reading CodeCarbon data.")
+                continue
+
+
+            # Save GPU power draw together with the other measurements
+            metrics_per_process["llm_gpu"] = nvidiasmi_data
+
+            print("==============================")
+            a = datetime.datetime.fromtimestamp(
+                    metrics_per_process["ollamaserve"]["timestamp"].iloc[0]
+            )
+            b = datetime.datetime.fromtimestamp(
+                    metrics_per_process["ollamaserve"]["timestamp"].iloc[-1]
+            )
+            c = nvidiasmi_data["datetime"].iloc[0]
+            d = nvidiasmi_data["datetime"].iloc[-1]
+            print("Start time: ", start_time)
+            print("End time: ", end_time)
+            print("Duration: ", end_time - start_time)
+            print("scaph Start time: ", a)
+            print("scaph End time: ", b)
+            print("scaph Duration: ", b - a)
+            print("nvidia Start time: ", c)
+            print("nvidia End time: ", d)
+            print("nvidia Duration: ", d - c)
+            print("==============================")
+
+            for cmdline, specific_process in metrics_per_process.items():
+                specific_process.set_index("timestamp", inplace=True)
+                if config.LLM_SERVICE_KEYWORD in cmdline:
+                    metrics_llm = specific_process
+                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    metrics_monitoring = specific_process
+
+            if plot_power_usage:
+                plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
+
+            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
+            breakpoint()
+
+            # Initialize CPU consumption to 0, to enable adding all related
+            # processes to it.
+            data["energy_consumption_llm_cpu"] = 0
+
+            for cmdline, energy_consumption in energy_consumption_dict.items():
+                if "gpu" in cmdline:
+                    data["energy_consumption_llm_gpu"] = energy_consumption
+                if config.LLM_SERVICE_KEYWORD in cmdline and not config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    data["energy_consumption_llm_cpu"] += energy_consumption
+                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                    data["energy_consumption_monitoring"] = energy_consumption
+
+            data["type"] = task_type
+            data["clock_duration"] = end_time - start_time
+            # Convert datetime.timedelta to float number of seconds
+            data["duration"] = data["clock_duration"].total_seconds()
+            data["start_time"] = start_time
+            data["end_time"] = end_time
+
+            data_df = pd.DataFrame.from_dict([data])
+
+            data_df["energy_consumption_llm_total"] = (
+                    data_df["energy_consumption_llm_cpu"] +
+                    data_df["energy_consumption_llm_gpu"]
+            )
+
+            data_df["energy_consumption_llm_cpu_codecarbon"] = codecarbon_data["energy_consumption_llm_cpu_codecarbon"]
+            data_df["energy_consumption_llm_gpu_codecarbon"] = codecarbon_data["energy_consumption_llm_gpu_codecarbon"]
+            data_df["energy_consumption_llm_total_codecarbon"] = codecarbon_data["energy_consumption_llm_total_codecarbon"]
+            data_df["duration_codecarbon"] = codecarbon_data["duration"]
+
+            data_df["energy_consumption_llm_cpu_pyjoules"] = pyjoules_data["consumption"].sum()
+            data_df["energy_consumption_llm_gpu_pyjoules"] = pyjoules_data["gpu_consumption"].sum()
+            data_df["energy_consumption_llm_total_pyjoules"] = pyjoules_data["total_consumption"].sum()
+            data_df["duration_pyjoules"] = pyjoules_data["duration"]
+
+            data_df["energy_consumption_llm_cpu_energymeter"] = em.get_total_joules_cpu()[0] + em.get_total_joules_dram()[0]
+            data_df["energy_consumption_llm_gpu_energymeter"] = em.get_total_joules_gpu()
+            data_df["energy_consumption_llm_total_energymeter"] = data_df["energy_consumption_llm_cpu_energymeter"] + data_df["energy_consumption_llm_gpu_energymeter"]
+
+            data_df["energy_consumption_llm_cpu_energymeter"] = joules2kwh(data_df["energy_consumption_llm_cpu_energymeter"])
+            data_df["energy_consumption_llm_gpu_energymeter"] = joules2kwh(data_df["energy_consumption_llm_gpu_energymeter"])
+            data_df["energy_consumption_llm_total_energymeter"] = joules2kwh(data_df["energy_consumption_llm_total_energymeter"])
+
+            if save_power_data:
+                if self.verbosity > 0:
+                    print("Saving data...")
+
+                timestamp_filename = data["created_at"].replace(":", "").replace(".", "")
+                llm_data_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.LLM_DATA_FILENAME}"
+                metrics_llm_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_FILENAME}"
+                metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME}"
+                metrics_llm_gpu_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_GPU_FILENAME}"
+
+                with open(llm_data_filename, "w") as f:
+                    self._save_data(data_df, llm_data_filename)
+
+                with open(metrics_llm_filename, "w") as f:
+                    self._save_data(metrics_llm, metrics_llm_filename)
+
+                with open(metrics_llm_gpu_filename, "w") as f:
+                    self._save_data(nvidiasmi_data, metrics_llm_gpu_filename)
+
+                with open(metrics_monitoring_filename, "w") as f:
+                    self._save_data(metrics_monitoring, metrics_monitoring_filename)
+
+                if self.verbosity > 0:
+                    print(f"Data saved with timestamp {timestamp_filename}")
+
+            # Delete temporary files
+            config.remove_temp_files()
+
+        try:
+            return data_df
+        except UnboundLocalError:
+            print("Due to an error, no data was collected.")
+            return None
+
+    def run_inference(self, prompt, llm_client):
+        """Run inference with the LLM.
+
+        Args:
+            prompt (str): The prompt to send to the LLM.
+            llm_client (LLMAPIClient): The LLM client to use.
+
+        Returns:
+            data (dict): The response from the LLM.
+
+        """
+
+        data = llm_client.call_api(prompt=prompt)
+
+        return data
+
+
+    def read_nvidiasmi_data(self):
+        # Load GPU power draw measured by nvidia-smi:
+        # Sometimes the writing of the GPU power data has not finished, so
+        # allow for some time if reading the data gives an errror.
+        num_attempts = 5
+        timeout = 3
+
+        # Try reading the data for num_attempts times
+        for i in range(num_attempts):
+            try:
+                # Read nvidia-smi data, and skipping last row, since it
+                # sometimes is incomplete.
+                nvidiasmi_data = pd.read_csv(config.NVIDIASMI_STREAM_TEMP_FILE, on_bad_lines="skip")[:-1]
+                return nvidiasmi_data
+            except pd.errors.EmptyDataError:
+                if i < num_attempts - 1:
+                    print(f"Error reading data. Waiting {timeout} second and trying again ({i+1}/{num_attempts})")
+                    time.sleep(timeout)
+                else:
+                    print(f"Error reading data after {num_attempts} attempts. Giving up.")
+                    nvidiasmi_data = None  # Set the data to None if all attempts fail
+                    return nvidiasmi_data
 
     def postprocess_nvidiasmi_data(self, df):
         """Postprocess nvidia-smi data.
@@ -500,7 +891,7 @@ class LLMEC():
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=row["prompt"],
                                 save_power_data=True,
-                                plot_power_usage=False,
+                                plot_power_usage=True,
                                 task_type=row["type"],
                         )
                         counter += 1
@@ -510,7 +901,7 @@ class LLMEC():
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=row["prompt"],
                                 save_power_data=True,
-                                plot_power_usage=False,
+                                plot_power_usage=True,
                                 task_type="unknown"
                         )
                         counter += 1
@@ -711,7 +1102,7 @@ def calculate_energy_consumption_from_power_measurements(
                 # print(f"kWh (time intervals): {energy_consumption_kwh}")
 
                 energy_consumption_joules = np.trapz(df["consumption"], df.index)
-                energy_consumption_kwh = energy_consumption_joules / 3.6e6
+                energy_consumption_kwh = joules2kwh(energy_consumption_joules)
                 print(f"kWh (trapz)  : {energy_consumption_kwh} - ({cmdline})")
 
                 # Store the result in the dictionary
@@ -730,11 +1121,14 @@ def calculate_energy_consumption_from_power_measurements(
 def plot_metrics_truncated(old_dfs, new_dfs):
     """Plot metrics for a single prompt-response."""
 
-    old_metrics_llm = old_dfs[0]
-    old_metrics_monitoring = old_dfs[1]
+    # FIXME: Indexing with numbers does not work reliable, since the order of
+    # the Dataframes may change. Need to identify them by the keywords in the
+    # 'exe' column of each dataframe.
+    old_metrics_llm = old_dfs[1]
+    old_metrics_monitoring = old_dfs[0]
     old_metrics_gpu = old_dfs[2]
-    metrics_llm = new_dfs[0]
-    metrics_monitoring = new_dfs[1]
+    metrics_llm = new_dfs[1]
+    metrics_monitoring = new_dfs[0]
     metrics_gpu = new_dfs[2]
 
     plt.figure()

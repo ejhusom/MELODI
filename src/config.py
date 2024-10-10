@@ -18,12 +18,12 @@ class Config:
     def __init__(self):
         # PARAMETERS
         self.SAMPLE_FREQUENCY_NANO_SECONDS = 100000000
-        self.LLM_SERVICE_KEYWORD = "ollamaserve"
+        self.LLM_SERVICE_KEYWORD = "ollama"
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
-        self.MONITORING_START_DELAY = 1.0
-        self.MONITORING_END_DELAY = 2.0
-        self.MEASUREMENTS_START_BUFFER = 0.5
-        self.MEASUREMENTS_END_BUFFER = 0.5
+        self.MONITORING_START_DELAY = 0
+        self.MONITORING_END_DELAY = 0
+        self.MEASUREMENTS_START_BUFFER = 0.0
+        self.MEASUREMENTS_END_BUFFER = 0.0
         self.OPENAI_API_COMPATIBLE_SERVICES = [
                 "llamafile",
                 "llama.cpp",
@@ -63,10 +63,15 @@ class Config:
 
     def remove_temp_files(self):
         """Remove temporary files."""
-        os.remove(self.SCAPHANDRE_STREAM_TEMP_FILE)
-        os.remove(self.NVIDIASMI_STREAM_TEMP_FILE)
-        os.remove(self.PYJOULES_TEMP_FILE)
-        os.remove(self.CODECARBON_TEMP_FILE)
+        temp_files = [
+            self.SCAPHANDRE_STREAM_TEMP_FILE,
+            self.NVIDIASMI_STREAM_TEMP_FILE,
+            self.PYJOULES_TEMP_FILE,
+            self.CODECARBON_TEMP_FILE,
+        ]
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 # Instantiate a single configuration object to use throughout your application
 config = Config()

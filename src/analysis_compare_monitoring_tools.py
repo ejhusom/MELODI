@@ -64,25 +64,25 @@ def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type=
         column_name + "_gpu_energymeter"
     ]
 
-    # Calculate means and standard deviations for CPU and GPU energy consumption
-    cpu_means = df[cpu_cols].mean()
-    gpu_means = df[gpu_cols].mean()
-    cpu_std = df[cpu_cols].std()
-    gpu_std = df[gpu_cols].std()
-
-    # Organize data into a form that's easy to work with
-    data = {
-        'Tool': tools * 2,
-        'Energy (kWh)': np.concatenate([cpu_means.values, gpu_means.values]),
-        'Hardware': ['CPU'] * len(tools) + ['GPU'] * len(tools),
-        'Std': np.concatenate([cpu_std.values, gpu_std.values])
-    }
-    plot_df = pd.DataFrame(data)
-
     figsize = (4.8, 6) if plot_type == 'bar' else (4.8, 7)
 
     # Plot based on the chosen type
     if plot_type == 'bar':
+        # Calculate means and standard deviations for CPU and GPU energy consumption
+        cpu_means = df[cpu_cols].mean()
+        gpu_means = df[gpu_cols].mean()
+        cpu_std = df[cpu_cols].std()
+        gpu_std = df[gpu_cols].std()
+
+        # Organize data into a form that's easy to work with
+        data = {
+            'Tool': tools * 2,
+            'Energy (kWh)': np.concatenate([cpu_means.values, gpu_means.values]),
+            'Hardware': ['CPU'] * len(tools) + ['GPU'] * len(tools),
+            'Std': np.concatenate([cpu_std.values, gpu_std.values])
+        }
+        plot_df = pd.DataFrame(data)
+
         fig, ax = plt.subplots(figsize=figsize)
 
         # Create a grouped bar chart (grouped by hardware, colors for tools)
@@ -153,6 +153,80 @@ def compare_monitoring_tools(dataset: EnergyDataset, per_token=False, plot_type=
     plt.savefig(config.PLOTS_DIR_PATH / f"{plot_basename}.{file_format}")
     plt.show()
 
+def compare_monitoring_tools_duration(dataset: EnergyDataset, plot_type='bar', log_scale=True, file_format='pdf'):
+    """Compare duration measured by different monitoring tools.
+
+    Args:
+        dataset (EnergyDataset): Dataset containing the data to compare.
+        plot_type (str): Type of plot to generate ('bar', 'violin', 'box').
+        log_scale (bool): If True, the y-axis is logarithmic.
+        file_format (str): File format to save the plot in ('pdf', 'png').
+
+    """
+
+    # Get the data
+    df = dataset.df
+
+    duration_cols = [
+        'duration',
+        'duration_pyjoules',
+        'duration_codecarbon',
+    ]
+
+    figsize = (4.8, 6) if plot_type == 'bar' else (4.8, 7)
+
+    # Plot based on the chosen type
+    if plot_type == 'bar':
+        # Calculate means and standard deviations for CPU and GPU energy consumption
+        duration_means = df[duration_cols].mean()
+        duration_std = df[duration_cols].std()
+
+        # Organize data into a form that's easy to work with
+        data = {
+            'Tool': ['MELODI', 'PyJoules', 'CodeCarbon'],
+            'Duration (s)': duration_means.values,
+            'Std': duration_std.values
+        }
+        plot_df = pd.DataFrame(data)
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Create a grouped bar chart (grouped by hardware, colors for tools)
+        x = np.arange(1)  # One group
+        width = 0.15  # Bar width
+
+        for i, tool in enumerate(['MELODI', 'PyJoules', 'CodeCarbon']):
+            ax.bar(x + i * width, plot_df[plot_df['Tool'] == tool]['Duration (s)'],
+                   width, yerr=plot_df[plot_df['Tool'] == tool]['Std'], label=tool)
+
+        if log_scale:
+            ax.set_yscale('log')
+
+        ax.set_xlabel('Tool')
+        ax.set_ylabel('Duration (s)')
+        ax.legend(title='Tool')
+        plt.tight_layout()
+
+    elif plot_type == 'violin':
+        fig, ax = plt.subplots(figsize=(figsize))
+        sns.violinplot(ax=ax, data=df[duration_cols])
+
+        ax.set_title('Duration')
+        ax.set_ylabel('Duration (s)')
+        ax.set_xticklabels(["MELODI", "PyJoules", "CodeCarbon"])
+
+    elif plot_type == 'box':
+        fig, ax = plt.subplots(figsize=figsize)
+
+        df.boxplot(column=duration_cols, ax=ax)
+
+        ax.set_title('Duration')
+        ax.set_ylabel('Duration (s)')
+        ax.set_xticklabels(["MELODI", "PyJoules", "CodeCarbon"])
+
+    else:
+        raise ValueError(f"Unknown plot_type '{plot_type}'. Use 'bar', 'violin', or 'box'.")
+
 
 def run_all_plot_options(dataset: EnergyDataset):
     """Run all combinations of plot_type and log_scale options.
@@ -186,4 +260,5 @@ if __name__ == "__main__":
                             promptset=args.promptset, 
                             hardware=args.hardware)
 
-    run_all_plot_options(dataset)
+    # run_all_plot_options(dataset)
+    compare_monitoring_tools_duration(dataset, plot_type='bar', log_scale=True, file_format='pdf')
