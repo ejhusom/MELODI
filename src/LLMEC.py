@@ -550,9 +550,13 @@ class LLMEC():
         if self.verbosity > 0:
             print("Power measurements stopped.")
 
-        # Read data from scaphandre
-        with open(config.SCAPHANDRE_STREAM_TEMP_FILE, "r") as f:
-            metrics_stream = f.read()
+        try:
+            # Read data from scaphandre
+            with open(config.SCAPHANDRE_STREAM_TEMP_FILE, "r") as f:
+                metrics_stream = f.read()
+        except FileNotFoundError:
+            print("Found no metrics to parse.")
+            return None
 
         metrics = parse_json_objects(metrics_stream)
         if metrics == []:
@@ -1085,7 +1089,7 @@ class LLMEC():
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=row["prompt"],
                                 save_power_data=True,
-                                plot_power_usage=True,
+                                plot_power_usage=False,
                                 task_type=row["type"],
                         )
                         counter += 1
@@ -1095,7 +1099,7 @@ class LLMEC():
                         df = self.run_prompt_with_energy_monitoring(
                                 prompt=row["prompt"],
                                 save_power_data=True,
-                                plot_power_usage=True,
+                                plot_power_usage=False,
                                 task_type="unknown"
                         )
                         counter += 1
