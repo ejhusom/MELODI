@@ -276,6 +276,8 @@ class Dataset():
             "energy_consumption_llm_total",
             "energy_consumption_monitoring",
             "energy_per_token",
+            "duration_monitoring_service",
+            "duration_clock",
             "Unnamed: 0",
             "Unnamed: 0.1",
             "index"
@@ -367,12 +369,15 @@ class Dataset():
         plt.show()
 
     @staticmethod
-    def boxplot_comparison_subplots(datasets_dict, column="energy_consumption_llm", subplot_dimension="model_name", promptset_colors=None, filter_model_size=True):
+    def boxplot_comparison_subplots(datasets_dict, column="energy_consumption_llm", subplot_dimension="model_name", promptset_colors=None, filter_model_size=True, filter_threshold=50, filter_greater_than=True):
 
-        # Remove datasets with over 50b in model size
         if filter_model_size:
-            datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= 50}
-
+            # Remove datasets with over threshold in model size
+            if filter_greater_than:
+                datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) <= filter_threshold}
+            # Remove datasets with under threshold in model size
+            else:
+                datasets_dict = {dataset_name: dataset for dataset_name, dataset in datasets_dict.items() if int(dataset["dataset"].name.split("_")[2][:-1]) >= filter_threshold}
         if subplot_dimension == "promptset":
             category_set = set([dataset["dataset"].name.split("_")[0] for dataset in datasets_dict.values()])
         elif subplot_dimension == "model_name_and_size":
@@ -392,7 +397,14 @@ class Dataset():
         n_boxes = [len([dataset for dataset in datasets_dict.values() if category in dataset["dataset"].name]) for category in category_set]
 
         # fig, ax = plt.subplots(1, len(category_set), figsize=(2.0*len(category_set), 3.5))
-        fig, ax = plt.subplots(1, len(category_set), figsize=(sum(n_boxes)/2+0.5, 3.2), gridspec_kw={'width_ratios': n_boxes})
+        figsize = (
+                max(
+                    sum(n_boxes)/2+0.5,
+                    4
+                ),
+                3.2
+        )
+        fig, ax = plt.subplots(1, len(category_set), figsize=figsize, gridspec_kw={'width_ratios': n_boxes})
 
         for i, category in enumerate(category_set):
             datasets = [dataset["dataset"] for dataset in datasets_dict.values() if category in dataset["dataset"].name]
@@ -439,7 +451,10 @@ class Dataset():
 
         plt.tight_layout()
         if filter_model_size:
-            plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}_large_models_removed"
+            if filter_greater_than:
+                plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}_large_models_removed"
+            else:
+                plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}_small_models_removed"
         else:
             plot_filename = f"boxplot_comparison_subplots_{column}_{subplot_dimension}"
         plt.savefig(config.PLOTS_DIR_PATH / f"{plot_filename}.pdf", bbox_inches='tight')
@@ -750,23 +765,31 @@ def generate_plots(datasets, promptset_colors, hardware_hatches):
     Dataset.boxplot_comparison(datasets, column="energy_consumption_llm", promptset_colors=promptset_colors, filter_model_size=False, showlegend=False, hardware_hatches=hardware_hatches)
     Dataset.boxplot_comparison(datasets, column="energy_per_token", promptset_colors=promptset_colors, filter_model_size=False, showlegend=True, hardware_hatches=hardware_hatches)
 
-def generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=False):
+def generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=False, filter_threshold=50, filter_greater_than=True):
     Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
                                         subplot_dimension="model_name_and_size",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=filter_model_size)
+                                        filter_model_size=filter_model_size,
+                                        filter_threshold=filter_threshold,
+                                        filter_greater_than=filter_greater_than)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
                                         subplot_dimension="model_name_and_size",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=filter_model_size)
+                                        filter_model_size=filter_model_size,
+                                        filter_threshold=filter_threshold,
+                                        filter_greater_than=filter_greater_than)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_per_token",
                                         subplot_dimension="hardware",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=filter_model_size)
+                                        filter_model_size=filter_model_size,
+                                        filter_threshold=filter_threshold,
+                                        filter_greater_than=filter_greater_than)
     Dataset.boxplot_comparison_subplots(datasets, column="energy_consumption_llm",
                                         subplot_dimension="hardware",
                                         promptset_colors=promptset_colors,
-                                        filter_model_size=filter_model_size)
+                                        filter_model_size=filter_model_size,
+                                        filter_threshold=filter_threshold,
+                                        filter_greater_than=filter_greater_than)
 
 def make_forecasting_result_plot(filepath):
 
@@ -856,10 +879,11 @@ def generate_expanded_statistics(datasets):
 if __name__ == '__main__':
 
     datasets, promptset_colors, hardware_hatches, df = preprocess_datasets()
-    generate_statistics(datasets)
+    # generate_statistics(datasets)
     # generate_plots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches)
     # generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=True)
+    generate_subplots(datasets, promptset_colors, hardware_hatches, filter_model_size=True, filter_greater_than=False)
     # generate_expanded_statistics(datasets)
     # Dataset.plot_single_correlations(df, num_corr=20)
 
