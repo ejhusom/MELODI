@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import time
+import re
 
 import ijson
 import matplotlib.pyplot as plt
@@ -27,10 +28,6 @@ from _csv import Error as CSVErr
 
 from config import config
 from LLMAPIClient import LLMAPIClient
-
-# from deepeval import assert_test, evaluate
-# from deepeval.metrics import AnswerRelevancyMetric
-# from deepeval.test_case import LLMTestCase
 
 
 class LLMEC():
@@ -80,7 +77,7 @@ class LLMEC():
             stream (bool, default=False): Whether to stream the response. Defaults to False.
             save_power_data (bool, default=False): Save power usage data to file.
             plot_power_usage (bool, default=False): Plot power usage.
-            TODO: batch_mode (bool, default=False): 
+            task_type (str, default="unknown"): Type of task being performed.
         """
         if llm_service is None:
             llm_service = self.config.get("General", "llm_service", fallback="ollama")
@@ -99,6 +96,8 @@ class LLMEC():
         # Make input prompt(s) iterable
         if isinstance(prompt, str):
             prompts = [prompt]
+        else:
+            prompts = prompt
 
         failed_reading_data = False
 
@@ -122,6 +121,7 @@ class LLMEC():
                 text=True
             )
 
+            # Update the regex to capture all Ollama-related processes
             scaphandre_process = subprocess.Popen(
                 [
                     "scaphandre",
@@ -130,7 +130,7 @@ class LLMEC():
                     "--step", "0",
                     "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
                     "--resources",
-                    "--process-regex", "ollama",
+                    "--process-regex", "ollama.*",  # Changed from "ollama" to "ollama.*"
                     "--file", config.SCAPHANDRE_STREAM_TEMP_FILE,
                 ],
                 stdout=subprocess.PIPE,
@@ -177,11 +177,12 @@ class LLMEC():
             for process in metrics_per_process:
                 metrics_per_process[process]["consumption"] /= 1e6
 
-            # Load GPU power draw measured by nvidia-smi:
-            # Sometimes the writing of the GPU power data has not finished, so allow for some time if reading the data gives an errror.
+            # Aggregate Ollama processes
+            aggregated_metrics = self._aggregate_ollama_processes(metrics_per_process)
+            
+            # Load GPU power draw measured by nvidia-smi
             num_attempts = 5
             timeout = 3
-
 
             # Try reading the data for num_attempts times
             for i in range(num_attempts):
@@ -203,25 +204,28 @@ class LLMEC():
             if failed_reading_data:
                 continue
 
-            # nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
             try:
                 nvidiasmi_data = self.postprocess_nvidiasmi_data(nvidiasmi_data)
-            except:
-                print("Failed postprocessing nvidiasmi data")
+            except Exception as e:
+                print(f"Failed postprocessing nvidiasmi data: {e}")
                 continue
 
-
             # Save GPU power draw together with the other measurements
-            metrics_per_process["llm_gpu"] = nvidiasmi_data
+            aggregated_metrics["llm_gpu"] = nvidiasmi_data
 
-            print(metrics_per_process)
+            if self.verbosity > 0:
+                print("================ Process Information ================")
+                for process_name in metrics_per_process:
+                    if config.LLM_SERVICE_KEYWORD in process_name or "ollama" in process_name:
+                        print(f"Found Ollama process: {process_name}")
+                print("===================================================")
 
             print("==============================")
             a = datetime.datetime.fromtimestamp(
-                    metrics_per_process["ollamaserve"]["timestamp"].iloc[0]
+                    aggregated_metrics["ollama_aggregated"]["timestamp"].iloc[0]
             )
             b = datetime.datetime.fromtimestamp(
-                    metrics_per_process["ollamaserve"]["timestamp"].iloc[-1]
+                    aggregated_metrics["ollama_aggregated"]["timestamp"].iloc[-1]
             )
             c = nvidiasmi_data["datetime"].iloc[0]
             d = nvidiasmi_data["datetime"].iloc[-1]
@@ -236,25 +240,38 @@ class LLMEC():
             print("nvidia Duration: ", d - c)
             print("==============================")
 
-            for cmdline, specific_process in metrics_per_process.items():
-                specific_process.set_index("timestamp", inplace=True)
-                if config.LLM_SERVICE_KEYWORD in cmdline:
-                    metrics_llm = specific_process
+            # Get the aggregated LLM metrics and monitoring metrics
+            metrics_llm = aggregated_metrics["ollama_aggregated"]
+            
+            monitoring_process = None
+            for cmdline in aggregated_metrics:
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
-                    metrics_monitoring = specific_process
+                    monitoring_process = cmdline
+                    break
+            
+            if monitoring_process:
+                metrics_monitoring = aggregated_metrics[monitoring_process]
+                metrics_monitoring.set_index("timestamp", inplace=True)
+            else:
+                print("No monitoring service process found.")
+                metrics_monitoring = pd.DataFrame()
 
-            # if plot_power_usage:
-            #     plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
+            # Set index for metrics_llm
+            metrics_llm.set_index("timestamp", inplace=True)
 
-            # print(metrics_per_process)
-            # breakpoint()
-            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
+            if plot_power_usage:
+                plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
 
+            # Calculate energy consumption
+            energy_consumption_dict = calculate_energy_consumption_from_power_measurements(
+                aggregated_metrics, start_time, end_time, show_plot=plot_power_usage
+            )
+
+            # Add energy consumption data to the result dictionary
             for cmdline, energy_consumption in energy_consumption_dict.items():
-                # print(f"Energy consumption for cmdline "{cmdline[:10]}...": {energy_consumption} kWh")
                 if "gpu" in cmdline:
                     data["energy_consumption_llm_gpu"] = energy_consumption
-                if config.LLM_SERVICE_KEYWORD in cmdline:
+                if cmdline == "ollama_aggregated":
                     data["energy_consumption_llm_cpu"] = energy_consumption
                 if config.MONITORING_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_monitoring"] = energy_consumption
@@ -281,22 +298,80 @@ class LLMEC():
                 metrics_monitoring_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_MONITORING_FILENAME}"
                 metrics_llm_gpu_filename = config.DATA_DIR_PATH / f"{timestamp_filename}_{config.METRICS_LLM_GPU_FILENAME}"
 
-                with open(llm_data_filename, "w") as f:
-                    self._save_data(data_df, llm_data_filename)
-
-                with open(metrics_llm_filename, "w") as f:
-                    self._save_data(metrics_llm, metrics_llm_filename)
-
-                with open(metrics_llm_gpu_filename, "w") as f:
-                    self._save_data(nvidiasmi_data, metrics_llm_gpu_filename)
-
-                with open(metrics_monitoring_filename, "w") as f:
+                self._save_data(data_df, llm_data_filename)
+                self._save_data(metrics_llm, metrics_llm_filename)
+                self._save_data(nvidiasmi_data, metrics_llm_gpu_filename)
+                
+                if not metrics_monitoring.empty:
                     self._save_data(metrics_monitoring, metrics_monitoring_filename)
 
                 if self.verbosity > 0:
                     print(f"Data saved with timestamp {timestamp_filename}")
 
         return data_df
+
+    def _aggregate_ollama_processes(self, metrics_per_process):
+        """
+        Aggregate power consumption data from all Ollama-related processes.
+        
+        Args:
+            metrics_per_process (dict): Dictionary of DataFrames containing metrics for each process
+            
+        Returns:
+            dict: Dictionary with aggregated Ollama processes and other processes
+        """
+        aggregated_metrics = {}
+        ollama_dfs = []
+        
+        # Identify all Ollama-related processes
+        for process_name, df in metrics_per_process.items():
+            if "ollama" in process_name.lower():
+                ollama_dfs.append(df)
+            else:
+                # Keep other processes as is
+                aggregated_metrics[process_name] = df
+        
+        if not ollama_dfs:
+            print("No Ollama processes found to aggregate.")
+            return metrics_per_process
+        
+        # Combine all Ollama DataFrames
+        if len(ollama_dfs) == 1:
+            # If only one Ollama process, use it directly
+            aggregated_metrics["ollama_aggregated"] = ollama_dfs[0]
+        else:
+            # If multiple Ollama processes, aggregate their power consumption
+            # First, get the common timestamps across all Ollama processes
+            all_timestamps = set()
+            for df in ollama_dfs:
+                all_timestamps.update(df["timestamp"].tolist())
+            all_timestamps = sorted(all_timestamps)
+            
+            # Create a new DataFrame with these timestamps
+            aggregated_df = pd.DataFrame({"timestamp": all_timestamps})
+            
+            # Calculate the total consumption at each timestamp
+            aggregated_df["consumption"] = 0.0
+            
+            for df in ollama_dfs:
+                # For each Ollama process, add its consumption values
+                for timestamp, row in df.iterrows():
+                    if timestamp in aggregated_df["timestamp"].values:
+                        mask = aggregated_df["timestamp"] == timestamp
+                        aggregated_df.loc[mask, "consumption"] += row["consumption"]
+            
+            # Sort by timestamp
+            aggregated_df = aggregated_df.sort_values("timestamp")
+            
+            # Copy other columns from the first Ollama DataFrame
+            # This assumes all Ollama processes have similar metadata
+            for column in ollama_dfs[0].columns:
+                if column not in ["timestamp", "consumption"]:
+                    aggregated_df[column] = ollama_dfs[0][column].iloc[0]
+            
+            aggregated_metrics["ollama_aggregated"] = aggregated_df
+        
+        return aggregated_metrics
 
     def postprocess_nvidiasmi_data(self, df):
 
@@ -319,8 +394,6 @@ class LLMEC():
         df["consumption"] = df["consumption"].str.replace(' W', '').astype(float)
         # Drop rows with negative timestamps (in the index)
         df = df[df.index >= 0]
-        # # Drop rows where timestamps does not appear chronologically
-        # df = df[df['timestamp'].diff().ge(0)]
 
         return df
 
@@ -334,14 +407,6 @@ class LLMEC():
                     data.to_csv(filename)
                 except CSVErr as e:
                     print("Failed to save with escape character. Skipping save:", e)
-                    # try:
-                    #     print("Encountered CSV error:", e)
-                    #     print("Retrying with escape character set...")
-                    #     # If error, retry with escapechar
-                    #     data.to_csv(filename, escapechar="\\")
-                    # except CSVErr as e:
-                    #     # If still an error, skip saving
-                    #     print("Failed to save with escape character. Skipping save:", e)
             elif "json" in os.path.splitext(filename)[-1]:
                 data.to_json(filename)
             else:
@@ -374,8 +439,6 @@ class LLMEC():
             counter = 1
             if dataset_path.endswith(".json"):
                 raise ValueError("json format not yet supported.")
-                # with open(dataset_path, "rb") as f:
-                #     for record in ijson.items(f, "item"):
             elif dataset_path.endswith(".jsonl"):
                 with open(dataset_path, "rb") as f:
                     for line in f.readlines():
@@ -440,7 +503,6 @@ class LLMEC():
             else:
                 raise ValueError("Dataset must be in csv, json or jsonl format.")
 
-            # Read dataset
         elif prompts:
             pass
             # Use prompts to run experiment
@@ -451,24 +513,29 @@ def plot_metrics(metrics_llm, metrics_monitoring, metrics_gpu):
     """Plot metrics for a single prompt-response."""
 
     plt.figure()
-    plt.plot(
-            metrics_monitoring.index,
-            metrics_monitoring["consumption"],
-            ".-",
-            label="Monitoring service",
-    )
+    
+    if not metrics_monitoring.empty:
+        plt.plot(
+                metrics_monitoring.index,
+                metrics_monitoring["consumption"],
+                ".-",
+                label="Monitoring service",
+        )
+    
     plt.plot(
             metrics_llm.index,
             metrics_llm["consumption"],
             ".-",
-            label="LLM service (CPU)",
+            label="LLM service (CPU) - Aggregated",
     )
+    
     plt.plot(
             metrics_gpu.index,
             metrics_gpu["consumption"],
             ".-",
             label="LLM service (GPU)",
     )
+    
     plt.xlabel("Timestamps")
     plt.ylabel("Power consumption (W)")
     plt.legend()
@@ -523,6 +590,7 @@ def flatten_data(data, split_key):
 
     Args:
         data (list): List of dictionaries to be flattened and converted.
+        split_key (str): Key containing nested dictionary to be flattened.
 
     Returns:
         df (pdDataFrame): A pandas DataFrame with flattened data.
@@ -530,7 +598,6 @@ def flatten_data(data, split_key):
     # Iterate over each record in the provided data list
     for record in data:
         # Check if there"s a nested dictionary that needs flattening
-        # Here "resources_usage" is the nested dictionary we expect based on the given structure
         if split_key in record:
             # Extract and remove the nested dictionary
             split_key_items = record.pop(split_key)
@@ -602,8 +669,7 @@ def calculate_energy_consumption_from_power_measurements(
         if not df.empty:
             # Convert timestamps to datetime objects
             df["datetime"] = pd.to_datetime(df.index, unit="s", utc=True)
-            # df['timestamp_seconds'] = df['datetime'].dt.total_seconds()
-
+            
             old_dfs.append(df.copy())
 
             # Apply buffer times before and after start_time and end_time
@@ -620,26 +686,12 @@ def calculate_energy_consumption_from_power_measurements(
 
             # Handle the case where duration might be zero to avoid division by zero error
             if duration > 0:
-                # # Calculate total power consumption in microwatts
-                # average_power_watts = df["consumption"].sum() / len(df)
-
-                # # Convert total power consumption to kWh
-                # energy_consumption_kwh = (average_power_watts * duration) / (3600 * 10**3)
-
-                #====================================================
-                # Calculate the time interval between each data point
-                # time_intervals = df["datetime"].diff().dt.total_seconds()
-                # Calculate the energy consumption by integrating the power values over time
-                # energy_consumption_kwh = (df["consumption"] * time_intervals).sum() / (10**3 * 3600)  # Convert Joules to kWh
-                # print(f"kWh (time intervals): {energy_consumption_kwh}")
-
                 energy_consumption_joules = np.trapezoid(df["consumption"], df.index)
                 energy_consumption_kwh = energy_consumption_joules / (10**3 * 3600)
-                print(f"kWh (trapz)         : {energy_consumption_kwh}")
+                print(f"{cmdline} kWh (trapz): {energy_consumption_kwh}")
 
                 # Store the result in the dictionary
                 energy_consumption_dict[cmdline] = energy_consumption_kwh
-
             else:
                 # If duration is zero, energy consumption is set to 0
                 energy_consumption_dict[cmdline] = 0
@@ -652,7 +704,11 @@ def calculate_energy_consumption_from_power_measurements(
 
 def plot_metrics_truncated(old_dfs, new_dfs):
     """Plot metrics for a single prompt-response."""
-
+    
+    if len(old_dfs) < 3 or len(new_dfs) < 3:
+        print("Not enough data to plot metrics")
+        return
+    
     old_metrics_llm = old_dfs[0]
     old_metrics_monitoring = old_dfs[1]
     old_metrics_gpu = old_dfs[2]
@@ -707,17 +763,3 @@ if __name__ == "__main__":
     filepath = sys.argv[1]
     llm = LLMEC()
     llm.run_experiment(filepath)
-
-    # n = 10
-
-    # for i in range(n):
-    #     llm.run_prompt_with_energy_monitoring(
-    #         prompt="What is the capital of the Marshall Islands?", save_power_data=True,
-    #         # prompt="Explain the general theory of relativity", save_power_data=True,
-    #         plot_power_usage=True,
-    #     )
-
-    # for i in range(1,26):
-    #     print("==================================================")
-    #     print(f"Running /home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
-         # llm.run_experiment(f"/home/erikhu/Documents/datasets/alpaca/alpaca_2300_5000_{str(i).zfill(2)}.csv")
