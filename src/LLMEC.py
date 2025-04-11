@@ -323,9 +323,12 @@ class LLMEC():
         aggregated_metrics = {}
         ollama_dfs = []
         
-        # Identify all Ollama-related processes
+        # Identify all Ollama-related processes, but exclude scaphandre
         for process_name, df in metrics_per_process.items():
-            if "ollama" in process_name.lower():
+            # Skip scaphandre processes even if they contain "ollama" in the command line
+            if config.MONITORING_SERVICE_KEYWORD in process_name:
+                aggregated_metrics[process_name] = df
+            elif "ollama" in process_name.lower():
                 ollama_dfs.append(df)
             else:
                 # Keep other processes as is
