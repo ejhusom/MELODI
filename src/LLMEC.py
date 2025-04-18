@@ -71,6 +71,12 @@ class LLMEC():
         task_type="unknown",
     ):
         """Prompts LLM and monitors energy consumption.
+        
+        Monitors energy consumption of all CPU processes related to Ollama (including runner 
+        processes) by matching the regex pattern ".*ollama.*". The energy consumption of all 
+        matching processes is aggregated to calculate the total CPU energy consumption of Ollama.
+        Scaphandre processes containing "ollama" in their command line are automatically filtered out
+        to avoid double-counting and inaccurate measurements.
 
         Args:
             prompt (str or list of str): The prompt(s) to be sent to the LLM.
@@ -80,7 +86,7 @@ class LLMEC():
             stream (bool, default=False): Whether to stream the response. Defaults to False.
             save_power_data (bool, default=False): Save power usage data to file.
             plot_power_usage (bool, default=False): Plot power usage.
-            TODO: batch_mode (bool, default=False): 
+            task_type (str, default="unknown"): Type of task for categorization.
         """
         if llm_service is None:
             llm_service = self.config.get("General", "llm_service", fallback="ollama")
@@ -122,17 +128,27 @@ class LLMEC():
                 text=True
             )
 
+            # Create scaphandre command with verbose flag if verbosity is enabled
+            scaphandre_cmd = [
+                "scaphandre",
+                "json",
+                "--timeout", "10000000000",
+                "--step", "0",
+                "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
+                "--resources",
+                "--process-regex", ".*ollama.*",
+                "--file", config.SCAPHANDRE_STREAM_TEMP_FILE,
+            ]
+            
+            # Add verbose flag if verbosity is enabled
+            if self.verbosity > 1:
+                scaphandre_cmd.append("--verbose")
+            
+            if self.verbosity > 0:
+                print(f"Starting scaphandre to monitor processes matching '.*ollama.*'")
+                
             scaphandre_process = subprocess.Popen(
-                [
-                    "scaphandre",
-                    "json",
-                    "--timeout", "10000000000",
-                    "--step", "0",
-                    "--step-nano", str(config.SAMPLE_FREQUENCY_NANO_SECONDS),
-                    "--resources",
-                    "--process-regex", "ollama",
-                    "--file", config.SCAPHANDRE_STREAM_TEMP_FILE,
-                ],
+                scaphandre_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
@@ -236,12 +252,48 @@ class LLMEC():
             print("nvidia Duration: ", d - c)
             print("==============================")
 
+            # Initialize combined dataframe for all Ollama processes
+            ollama_dfs = []
+            ollama_process_names = []
+            
             for cmdline, specific_process in metrics_per_process.items():
                 specific_process.set_index("timestamp", inplace=True)
-                if config.LLM_SERVICE_KEYWORD in cmdline:
-                    metrics_llm = specific_process
-                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                
+                # We need to filter out the scaphandre process itself which contains "ollama" in its command line arguments
+                if "ollama" in cmdline and "scaphandre" not in cmdline:
+                    if self.verbosity > 0:
+                        print(f"Found Ollama process: {cmdline}")
+                    ollama_dfs.append(specific_process)
+                    ollama_process_names.append(cmdline)
+                elif config.MONITORING_SERVICE_KEYWORD in cmdline:
                     metrics_monitoring = specific_process
+                elif "scaphandre" in cmdline and "ollama" in cmdline:
+                    if self.verbosity > 0:
+                        print(f"Filtering out scaphandre process that contains 'ollama' in args: {cmdline}")
+            
+            if self.verbosity > 0:
+                print(f"Found {len(ollama_dfs)} Ollama processes: {ollama_process_names}")
+                print("Aggregating energy consumption of all Ollama processes")
+            
+            # Combine all Ollama process dataframes if any were found
+            if ollama_dfs:
+                # Combine all dataframes by index (timestamp)
+                metrics_llm = pd.concat(ollama_dfs)
+                # Sort by timestamp to ensure correct chronological order
+                metrics_llm = metrics_llm.sort_index()
+                # Group by timestamp and sum consumption values to get total consumption at each timestamp
+                # This is the key step for aggregating multiple Ollama processes
+                metrics_llm = metrics_llm.groupby(metrics_llm.index)['consumption'].sum().to_frame()
+                # Add cmdline column for compatibility with the rest of the code
+                metrics_llm['cmdline'] = config.LLM_SERVICE_KEYWORD
+                
+                if self.verbosity > 0:
+                    print(f"Successfully aggregated consumption data for {len(ollama_dfs)} Ollama processes")
+            else:
+                # If no Ollama processes found, create empty dataframe
+                metrics_llm = pd.DataFrame(columns=["consumption", "cmdline"])
+                if self.verbosity > 0:
+                    print("Warning: No Ollama processes found to monitor")
 
             # if plot_power_usage:
             #     plot_metrics(metrics_llm, metrics_monitoring, nvidiasmi_data)
@@ -250,14 +302,36 @@ class LLMEC():
             # breakpoint()
             energy_consumption_dict = calculate_energy_consumption_from_power_measurements(metrics_per_process, start_time, end_time, show_plot=plot_power_usage)
 
+            # Initialize CPU energy consumption for LLM
+            total_llm_cpu_energy = 0.0
+            ollama_processes_energy = {}
+            
             for cmdline, energy_consumption in energy_consumption_dict.items():
-                # print(f"Energy consumption for cmdline "{cmdline[:10]}...": {energy_consumption} kWh")
                 if "gpu" in cmdline:
                     data["energy_consumption_llm_gpu"] = energy_consumption
-                if config.LLM_SERVICE_KEYWORD in cmdline:
-                    data["energy_consumption_llm_cpu"] = energy_consumption
-                if config.MONITORING_SERVICE_KEYWORD in cmdline:
+                # Include only Ollama processes that are not scaphandre processes
+                elif ("ollama" in cmdline and "scaphandre" not in cmdline) or cmdline == config.LLM_SERVICE_KEYWORD:
+                    # Track individual Ollama process energy consumption
+                    ollama_processes_energy[cmdline] = energy_consumption
+                    # Add to total Ollama energy consumption
+                    total_llm_cpu_energy += energy_consumption
+                elif config.MONITORING_SERVICE_KEYWORD in cmdline:
                     data["energy_consumption_monitoring"] = energy_consumption
+                elif "scaphandre" in cmdline and "ollama" in cmdline and self.verbosity > 0:
+                    print(f"Excluded scaphandre process from energy calculation: {cmdline}")
+            
+            if self.verbosity > 0 and ollama_processes_energy:
+                print("Energy consumption breakdown for Ollama processes:")
+                for process, energy in ollama_processes_energy.items():
+                    print(f"  - {process}: {energy:.8f} kWh")
+                print(f"Total Ollama CPU energy consumption: {total_llm_cpu_energy:.8f} kWh")
+            
+            # Set the total Ollama CPU energy consumption
+            data["energy_consumption_llm_cpu"] = total_llm_cpu_energy
+            
+            # If no Ollama process energy was found, add a warning
+            if total_llm_cpu_energy == 0.0 and self.verbosity > 0:
+                print("WARNING: No energy consumption was measured for Ollama processes.")
 
             data["type"] = task_type
             data["clock_duration"] = end_time - start_time
@@ -653,7 +727,10 @@ def calculate_energy_consumption_from_power_measurements(
 def plot_metrics_truncated(old_dfs, new_dfs):
     """Plot metrics for a single prompt-response."""
 
-    old_metrics_llm = old_dfs[0]
+    # In the case where multiple Ollama processes exist, we need to ensure
+    # we're handling the dataframes correctly. The first dataframe is always 
+    # the combined Ollama processes (already aggregated), followed by monitoring and GPU.
+    old_metrics_llm = old_dfs[0] 
     old_metrics_monitoring = old_dfs[1]
     old_metrics_gpu = old_dfs[2]
     metrics_llm = new_dfs[0]
