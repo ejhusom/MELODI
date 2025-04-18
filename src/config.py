@@ -17,7 +17,7 @@ class Config:
     def __init__(self):
         # PARAMETERS
         self.SAMPLE_FREQUENCY_NANO_SECONDS = 100000000
-        self.LLM_SERVICE_KEYWORD = "ollama"
+        self.LLM_SERVICE_KEYWORD = "ollamaserve"
         self.MONITORING_SERVICE_KEYWORD = "scaphandre"
         self.MONITORING_START_DELAY = 1.0
         self.MONITORING_END_DELAY = 2.0
